@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# uv
+.uv/
+
+# Build / PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Modelos baixados / caches locais
+models/
+*.pth
+*.onnx
+
+# Saída de rodada / benchmark local
+saida/
+bench/resultado-*.csv
+amostras/
+
+# Config local (chave de API)
+config.json
+
+# OS / editor
+.DS_Store
+.vscode/

@@ -9,6 +9,7 @@ from leitor_lote.config import Config
 from leitor_lote.models import LinhaResultado, ParametrosRodada, Tipo
 from leitor_lote.preprocess import descartar, preparar
 from leitor_lote.readers import disponivel, resolve
+from leitor_lote.selecao import escolher
 from leitor_lote.validate import avaliar
 
 EXT_OK: set[str] = {".jpg", ".jpeg", ".png", ".pdf"}
@@ -23,7 +24,8 @@ def _arquivos(pasta: Path) -> list[Path]:
 def _melhor_de_paginas(reader, paginas, tipo, p):
     melhor = None
     for img in paginas:
-        leitura = reader.read(img, tipo)
+        bruta = reader.read(img, tipo)
+        leitura = escolher(bruta, tipo, p.seq_esperada, p.intervalo_maximo)
         v = avaliar(leitura, tipo, p.seq_esperada, p.intervalo_maximo)
         if v.aprovado:
             return leitura, v

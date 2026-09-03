@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from leitor_lote.models import Campo, PreparedImage, Tipo
@@ -16,7 +18,7 @@ def _img(tmp_path):
     return PreparedImage(bytes_=b"x", mimetype="image/jpeg", largura=200, altura=60, caminho_tmp=p)
 
 
-def test_read_extrai_digitos_sem_confianca(tmp_path, monkeypatch):
+def test_read_devolve_texto_sem_confianca(tmp_path, monkeypatch):
     class _Proc:
         def __call__(self, images, return_tensors):
             class _T:
@@ -33,7 +35,8 @@ def test_read_extrai_digitos_sem_confianca(tmp_path, monkeypatch):
 
     monkeypatch.setattr(trocr_reader, "_pipe", lambda: (_Proc(), _Model()))
     r = TrOcrReader().read(_img(tmp_path), TIPO)
-    assert r.valor == "349498"
+    assert r.valor == "nota 349498 "
+    assert re.sub(r"\D", "", r.valor) == "349498"
     assert r.confianca is None
     assert r.motor == "trocr"
 
@@ -49,4 +52,4 @@ def test_read_real(tmp_path):
     pi = PreparedImage(bytes_=p.read_bytes(), mimetype="image/jpeg", largura=240, altura=80,
                        caminho_tmp=p)
     r = TrOcrReader().read(pi, TIPO)
-    assert r.valor.isdigit()
+    assert "349498" in re.sub(r"\D", "", r.valor)

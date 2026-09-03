@@ -36,5 +36,5 @@ class TrOcrReader:
         pixel_values = proc(images=rgb, return_tensors="pt").pixel_values
         ids = model.generate(pixel_values, max_new_tokens=32)
         texto = proc.batch_decode(ids, skip_special_tokens=True)[0]
-        valor = "".join(ch for ch in texto if ch.isdigit())
+        valor = texto
         return Reading(valor=valor, confianca=None, motor="trocr", bruto=texto)

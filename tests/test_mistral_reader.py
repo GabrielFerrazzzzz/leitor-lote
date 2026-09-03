@@ -1,3 +1,5 @@
+import re
+
 import httpx
 
 from leitor_lote.config import Config
@@ -9,7 +11,7 @@ TIPO = Tipo(id="canhoto", nome="C", prompt="", modo="ia", motor="mistral-ocr",
 IMG = PreparedImage(bytes_=b"abc", mimetype="image/jpeg", largura=1, altura=1, caminho_tmp=None)
 
 
-def test_read_junta_paginas_e_extrai_digitos(monkeypatch):
+def test_read_junta_paginas(monkeypatch):
     class _Resp:
         status_code = 200
 
@@ -21,7 +23,8 @@ def test_read_junta_paginas_e_extrai_digitos(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", lambda *a, **k: _Resp())
     r = MistralOcrReader(chave="key").read(IMG, TIPO)
-    assert r.valor == "349498"
+    assert r.valor == "nota: 3494\n98 fim"
+    assert re.sub(r"\D", "", r.valor) == "349498"
     assert r.motor == "mistral-ocr"
     assert "key" not in r.bruto
 

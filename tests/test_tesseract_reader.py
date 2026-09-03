@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from leitor_lote.models import Campo, PreparedImage, Tipo
@@ -21,7 +23,8 @@ def test_read_junta_tokens_e_confianca(tmp_path, monkeypatch):
     fake = {"text": ["34", "", "9498"], "conf": ["90", "-1", "80"]}
     monkeypatch.setattr(pytesseract, "image_to_data", lambda *a, **k: fake)
     r = TesseractReader().read(_img(tmp_path), TIPO)
-    assert r.valor == "349498"
+    assert r.valor == "34 9498"
+    assert re.sub(r"\D", "", r.valor) == "349498"
     assert r.motor == "tesseract"
     assert abs(r.confianca - 0.85) < 1e-6
 
@@ -37,4 +40,4 @@ def test_read_real(tmp_path):
     pi = PreparedImage(bytes_=p.read_bytes(), mimetype="image/jpeg", largura=240, altura=80,
                        caminho_tmp=p)
     r = TesseractReader().read(pi, TIPO)
-    assert "349498" in r.valor
+    assert "349498" in re.sub(r"\D", "", r.valor)

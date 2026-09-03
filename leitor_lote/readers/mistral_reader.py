@@ -29,5 +29,5 @@ class MistralOcrReader:
         r = httpx.post(URL, json=body, headers=headers, timeout=60.0)
         r.raise_for_status()
         texto = "\n".join(p.get("markdown", "") for p in r.json().get("pages", [])).strip()
-        valor = "".join(ch for ch in texto if ch.isdigit())
+        valor = texto
         return Reading(valor=valor, confianca=None, motor="mistral-ocr", bruto=texto)

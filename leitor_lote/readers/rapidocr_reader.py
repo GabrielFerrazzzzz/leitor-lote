@@ -24,6 +24,6 @@ class RapidOcrReader:
         linhas = resultado or []
         textos = [linha[1] for linha in linhas]
         scores = [float(linha[2]) for linha in linhas]
-        valor = "".join(ch for ch in "".join(textos) if ch.isdigit())
+        valor = "\n".join(textos)
         conf = (sum(scores) / len(scores)) if scores else None
         return Reading(valor=valor, confianca=conf, motor="rapidocr", bruto=str(linhas))

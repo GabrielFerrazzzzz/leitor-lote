@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from leitor_lote.models import Campo, PreparedImage, Tipo
@@ -16,7 +18,7 @@ def _img(tmp_path):
     return PreparedImage(bytes_=b"x", mimetype="image/jpeg", largura=200, altura=60, caminho_tmp=p)
 
 
-def test_read_extrai_digitos_e_media_de_score(tmp_path, monkeypatch):
+def test_read_junta_linhas_e_media_de_score(tmp_path, monkeypatch):
     class _Eng:
         def __call__(self, caminho):
             linhas = [[[[0, 0]], "NF 3494", 0.9], [[[0, 0]], "98", 0.8]]
@@ -24,7 +26,7 @@ def test_read_extrai_digitos_e_media_de_score(tmp_path, monkeypatch):
 
     monkeypatch.setattr(rapidocr_reader, "_engine", lambda: _Eng())
     r = RapidOcrReader().read(_img(tmp_path), TIPO)
-    assert r.valor == "349498"
+    assert r.valor == "NF 3494\n98"
     assert abs(r.confianca - 0.85) < 1e-6
     assert r.motor == "rapidocr"
 
@@ -51,4 +53,4 @@ def test_read_real(tmp_path):
     pi = PreparedImage(bytes_=p.read_bytes(), mimetype="image/jpeg", largura=240, altura=80,
                        caminho_tmp=p)
     r = RapidOcrReader().read(pi, TIPO)
-    assert "349498" in r.valor
+    assert "349498" in re.sub(r"\D", "", r.valor)

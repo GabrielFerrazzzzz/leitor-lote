@@ -21,7 +21,7 @@ class TesseractReader:
                 img, config=_CONFIG, output_type=pytesseract.Output.DICT
             )
         tokens = [(t, c) for t, c in zip(data["text"], data["conf"]) if t.strip()]
-        valor = "".join(t for t, _ in tokens)
+        valor = " ".join(t for t, _ in tokens)
         confs = [int(c) for _, c in tokens if str(c).lstrip("-").isdigit() and int(c) >= 0]
         conf = (sum(confs) / len(confs) / 100.0) if confs else None
         return Reading(valor=valor, confianca=conf, motor="tesseract", bruto=repr(tokens))

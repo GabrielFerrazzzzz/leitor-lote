@@ -2432,13 +2432,17 @@ name: build
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch: {}   # permite rodar manualmente pra smoke test antes do 1º tag
+
+permissions:
+  contents: write          # action-gh-release precisa disso pra publicar o Release
 
 jobs:
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
       - name: Instalar Tesseract
@@ -2448,6 +2452,7 @@ jobs:
       - name: Zipar
         run: Compress-Archive -Path dist/leitor-lote/* -DestinationPath leitor-lote-${{ github.ref_name }}.zip
       - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')   # só publica em tag, não no workflow_dispatch
         with:
           files: leitor-lote-*.zip
 ```

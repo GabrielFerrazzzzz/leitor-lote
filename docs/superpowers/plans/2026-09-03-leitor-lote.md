@@ -730,7 +730,8 @@ git commit -m "feat: config local (%APPDATA%) + tipos via URL com fallback embut
 **Interfaces:**
 - Consumes: `PreparedImage` de `leitor_lote.models`; `PIL`, `cv2`, `numpy`, `pypdfium2`.
 - Produces:
-  - `preparar(arquivo: Path, *, para_ocr: bool) -> list[PreparedImage]` — orienta por EXIF; reduz se lado maior > `MAX_LADO` (2000); re-encoda JPEG q `JPEG_Q` (82); PDF → 1 `PreparedImage` por página (300 dpi via `pypdfium2`); imagem simples → lista de 1. `para_ocr=True` adiciona cinza + `cv2.adaptiveThreshold` + deskew.
+  - `preparar(arquivo: Path, *, para_ocr: bool) -> list[PreparedImage]` — orienta por EXIF; reduz se lado maior > `MAX_LADO` (2000); re-encoda JPEG q `JPEG_Q` (82); PDF → 1 `PreparedImage` por página (300 dpi via `pypdfium2`); imagem simples → lista de 1. `para_ocr=True` adiciona cinza + `cv2.adaptiveThreshold` + deskew (correção só de inclinações pequenas — ver `_deskew`).
+  - `descartar(imagens: Iterable[PreparedImage]) -> None` — apaga o `caminho_tmp` de cada imagem (`unlink(missing_ok=True)`, engole erro). Quem chama `preparar` é dono da limpeza; nesta base é a `pipeline` (Task 12), num `finally` por arquivo.
   - Constantes `MAX_LADO = 2000`, `JPEG_Q = 82`.
 - Fixtures (`conftest.py`): `png_pequeno` (100×200), `png_grande` (3000×2000), `pdf_2p` (PDF de 2 páginas).
 
@@ -809,6 +810,25 @@ def test_para_ocr_aplica_threshold(png_pequeno, monkeypatch):
     chamado["n"] = 0
     preprocess.preparar(png_pequeno, para_ocr=False)
     assert chamado["n"] == 0
+
+
+def test_deskew_nao_gira_imagem_alinhada(tmp_path):
+    from PIL import Image, ImageDraw
+
+    p = tmp_path / "barra.png"
+    img = Image.new("RGB", (600, 200), "white")
+    ImageDraw.Draw(img).rectangle([40, 90, 560, 110], fill="black")  # barra horizontal já alinhada
+    img.save(p)
+    out = preprocess.preparar(p, para_ocr=True)[0]
+    assert out.largura > out.altura  # continua paisagem — não sofreu quarto de volta
+
+
+def test_descarta_temporarios(png_pequeno):
+    out = preprocess.preparar(png_pequeno, para_ocr=False)
+    caminhos = [x.caminho_tmp for x in out]
+    assert all(c.exists() for c in caminhos)
+    preprocess.descartar(out)
+    assert not any(c.exists() for c in caminhos)
 ```
 
 - [ ] **Step 3: Rodar e ver falhar**
@@ -823,6 +843,7 @@ from __future__ import annotations
 
 import io
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 
 import cv2
@@ -835,15 +856,19 @@ from leitor_lote.models import PreparedImage
 MAX_LADO = 2000
 JPEG_Q = 82
 DPI = 300
+SKEW_MAX_GRAUS = 15.0  # acima disso é ruído do minAreaRect, não inclinação real — não rotaciona
 
 
 def _deskew(arr: np.ndarray) -> np.ndarray:
-    coords = np.column_stack(np.where(arr < 255))
-    if coords.size == 0:
+    # pontos escuros como (x, y) — np.where devolve (linha, col) = (y, x), então inverte
+    coords = np.column_stack(np.where(arr < 255))[:, ::-1]
+    if coords.shape[0] < 50:
         return arr
     angle = cv2.minAreaRect(coords.astype(np.float32))[-1]
-    angle = -(90 + angle) if angle < -45 else -angle
-    if abs(angle) < 0.5:
+    # OpenCV >=4.5: minAreaRect devolve angle em (0, 90]; normaliza pra (-45, 45]
+    if angle > 45:
+        angle -= 90
+    if abs(angle) < 0.5 or abs(angle) > SKEW_MAX_GRAUS:
         return arr
     h, w = arr.shape
     m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
@@ -891,12 +916,20 @@ def preparar(arquivo: Path, *, para_ocr: bool) -> list[PreparedImage]:
             doc.close()
     with Image.open(arquivo) as img:
         return [_para_prepared(img, para_ocr)]
+
+
+def descartar(imagens: Iterable[PreparedImage]) -> None:
+    for img in imagens:
+        try:
+            Path(img.caminho_tmp).unlink(missing_ok=True)
+        except OSError:
+            pass
 ```
 
 - [ ] **Step 5: Rodar e ver passar**
 
 Run: `uv run pytest tests/test_preprocess.py -v`
-Expected: PASS (4 passed)
+Expected: PASS (6 passed)
 
 - [ ] **Step 6: Commit**
 
@@ -1692,11 +1725,11 @@ git commit -m "feat: MistralOcrReader (endpoint /v1/ocr, junta markdown das pagi
 - Create: `tests/test_pipeline.py`
 
 **Interfaces:**
-- Consumes: `ParametrosRodada`, `LinhaResultado`, `Tipo` de `models`; `Config` de `config`; `resolve`, `disponivel` de `readers`; `preparar` de `preprocess`; `avaliar` de `validate`.
+- Consumes: `ParametrosRodada`, `LinhaResultado`, `Tipo` de `models`; `Config` de `config`; `resolve`, `disponivel` de `readers`; `preparar`, `descartar` de `preprocess`; `avaliar` de `validate`.
 - Produces:
   - `rodar(p: ParametrosRodada, cfg: Config, tipos: dict[str, Tipo], progresso: Callable[[int, int], None], cancel: threading.Event | None = None) -> list[LinhaResultado]`
   - `EXT_OK: set[str] = {".jpg", ".jpeg", ".png", ".pdf"}`
-  - Comportamento: lista arquivos suportados (não recursivo, ordenado); `ThreadPoolExecutor(max_workers=max(1, cfg.concorrencia))`; por arquivo — `preparar(para_ocr = p.modo != "ia")`, `resolve(p.motor_id).read` em cada página, `avaliar`; para na 1ª página aprovada. Se `p.modo == "auto"` e (`not aprovado` **ou** `confianca` não-`None` e `< cfg.limiar_confianca`) e `disponivel(cfg.motor_ia_fallback, cfg)` → refaz com `resolve(cfg.motor_ia_fallback)` sobre `preparar(para_ocr=False)`. Exceção no arquivo → `LinhaResultado(status="erro", erro=str(e))`. `cancel.is_set()` → não agenda mais e marca `erro="cancelado"`. `progresso(feitos, total)` chamado uma vez com `(0, total)` e depois a cada arquivo concluído.
+  - Comportamento: lista arquivos suportados (não recursivo, ordenado); `ThreadPoolExecutor(max_workers=max(1, cfg.concorrencia))`; por arquivo — `preparar(para_ocr = p.modo != "ia")`, `resolve(p.motor_id).read` em cada página, `avaliar`; para na 1ª página aprovada. Se `p.modo == "auto"` e (`not aprovado` **ou** `confianca` não-`None` e `< cfg.limiar_confianca`) e `disponivel(cfg.motor_ia_fallback, cfg)` → refaz com `resolve(cfg.motor_ia_fallback)` sobre `preparar(para_ocr=False)`. Exceção no arquivo → `LinhaResultado(status="erro", erro=str(e))`. `cancel.is_set()` → não agenda mais e marca `erro="cancelado"`. `progresso(feitos, total)` chamado uma vez com `(0, total)` e depois a cada arquivo concluído. **Toda lista devolvida por `preparar` (a do caminho principal e a do fallback) é passada pra `descartar` num `finally` por arquivo — os temporários nunca vazam.**
 
 - [ ] **Step 1: Escrever os testes**
 
@@ -1705,6 +1738,7 @@ git commit -m "feat: MistralOcrReader (endpoint /v1/ocr, junta markdown das pagi
 import threading
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from leitor_lote import pipeline
@@ -1714,6 +1748,13 @@ from leitor_lote.models import Campo, ParametrosRodada, PreparedImage, Reading, 
 CANHOTO = Tipo(id="canhoto", nome="C", prompt="", modo="auto", motor="paddleocr",
                campos=(Campo("numero", 6),))
 TIPOS = {"canhoto": CANHOTO}
+
+
+@pytest.fixture(autouse=True)
+def _stub_descartar(monkeypatch):
+    # o pipeline chama preprocess.descartar num finally; nestes testes preparar é
+    # mockado, então descartar não tem o que fazer — neutraliza pra isolar a orquestração
+    monkeypatch.setattr(pipeline, "descartar", lambda *a, **k: None)
 
 
 def _pasta(tmp_path: Path, n: int) -> Path:
@@ -1804,6 +1845,19 @@ def test_cancelado_marca_erro(tmp_path, monkeypatch):
     ev.set()
     out = pipeline.rodar(_params(pasta), Config(), TIPOS, lambda f, t: None, cancel=ev)
     assert all(l.status == "erro" and l.erro == "cancelado" for l in out)
+
+
+def test_descarta_temporarios_de_cada_arquivo(tmp_path, monkeypatch):
+    pasta = _pasta(tmp_path, 3)
+    monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+    monkeypatch.setattr(pipeline, "resolve",
+                        lambda mid, cfg: type("R", (), {"read": lambda s, i, t:
+                            Reading(valor="349498", confianca=0.9, motor="paddleocr", bruto="")})())
+    descartados = []
+    monkeypatch.setattr(pipeline, "descartar", lambda imgs: descartados.append(list(imgs)))
+    pipeline.rodar(_params(pasta), Config(), TIPOS, lambda f, t: None)
+    assert len(descartados) == 3  # um finally por arquivo
+    assert all(len(lote) >= 1 for lote in descartados)
 ```
 
 - [ ] **Step 2: Rodar e ver falhar**
@@ -1823,7 +1877,7 @@ from pathlib import Path
 
 from leitor_lote.config import Config
 from leitor_lote.models import LinhaResultado, ParametrosRodada, Tipo
-from leitor_lote.preprocess import preparar
+from leitor_lote.preprocess import descartar, preparar
 from leitor_lote.readers import disponivel, resolve
 from leitor_lote.validate import avaliar
 
@@ -1851,8 +1905,10 @@ def _ler_um(arquivo: Path, p: ParametrosRodada, cfg: Config, tipo: Tipo,
             cancel: threading.Event) -> LinhaResultado:
     if cancel.is_set():
         return LinhaResultado(arquivo.name, "", None, "", "erro", "cancelado")
+    preparados: list = []
     try:
         paginas = preparar(arquivo, para_ocr=p.modo != "ia")
+        preparados.extend(paginas)
         reader = resolve(p.motor_id, cfg)
         leitura, v = _melhor_de_paginas(reader, paginas, tipo, p)
 
@@ -1860,7 +1916,9 @@ def _ler_um(arquivo: Path, p: ParametrosRodada, cfg: Config, tipo: Tipo,
             baixa_conf = leitura.confianca is not None and leitura.confianca < cfg.limiar_confianca
             if (not v.aprovado or baixa_conf) and disponivel(cfg.motor_ia_fallback, cfg):
                 r2 = resolve(cfg.motor_ia_fallback, cfg)
-                res2 = _melhor_de_paginas(r2, preparar(arquivo, para_ocr=False), tipo, p)
+                paginas_ia = preparar(arquivo, para_ocr=False)
+                preparados.extend(paginas_ia)
+                res2 = _melhor_de_paginas(r2, paginas_ia, tipo, p)
                 if res2 and (res2[1].aprovado or not v.aprovado):
                     leitura, v = res2
 
@@ -1869,6 +1927,8 @@ def _ler_um(arquivo: Path, p: ParametrosRodada, cfg: Config, tipo: Tipo,
                               status, None)
     except Exception as e:  # noqa: BLE001
         return LinhaResultado(arquivo.name, "", None, "", "erro", str(e))
+    finally:
+        descartar(preparados)
 
 
 def rodar(
@@ -1900,7 +1960,7 @@ def rodar(
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `uv run pytest tests/test_pipeline.py -v`
-Expected: PASS (4 passed)
+Expected: PASS (5 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -2691,7 +2751,8 @@ git commit -m "docs: README (uso do exe, motores, modos, tipos.json, dev, build,
 | Motor escolhível por tipo + sobreposto na janela | 4 (`Tipo.motor`), 6 (`resolve`), 13 (`opcoes_motor`, combos) |
 | Modo grátis sem chave (Tesseract/Paddle) | 7, 8 |
 | `Reading{valor, confianca, motor, bruto}` | 2, 6 |
-| `preprocess`: EXIF, ≤2000px/q82, PDF→páginas, threshold/deskew | 5 |
+| `preprocess`: EXIF, ≤2000px/q82, PDF→páginas, threshold/deskew (só inclinação pequena) | 5 |
+| Temporários do `preprocess` limpos (`descartar` no `finally` da pipeline) | 5 (fn) + 12 (chamada) |
 | Validação por `tipo.campos` + faixa `seq±intervalo` | 3 |
 | `modo auto` com fallback pra IA; sem confiança → só `not aprovado` | 12 |
 | Concorrência limitada (default 5) | 12 (`ThreadPoolExecutor`, teste de limite) |

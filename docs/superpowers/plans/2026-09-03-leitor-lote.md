@@ -45,6 +45,7 @@ leitor-lote/
     config.py                          # Task 4  — Config, carregar/salvar, buscar_tipos
     tipos.fallback.json                # Task 4  — cópia embutida (refina o spec: fica DENTRO do pacote)
     preprocess.py                      # Task 5  — preparar()
+    selecao.py                         # Task 17 — escolher() (extrai a resposta da saída ruidosa do OCR)
     readers/
       __init__.py                      # Task 6  — MOTORES_IDS, resolve(), disponivel()
       base.py                          # Task 6  — Protocol Reader
@@ -2779,6 +2780,132 @@ Expected: `All checks passed!`
 git add README.md
 git commit -m "docs: README (uso do exe, motores, modos, tipos.json, dev, build, benchmark)"
 ```
+
+---
+
+## Task 17: `selecao.py` — extrair a resposta da saída ruidosa (fix B1 da review final)
+
+**Problema (achado na review whole-branch):** os readers OCR (`rapidocr`, `tesseract`, `trocr`)
+originalmente colavam **todos os dígitos da página** em `Reading.valor`; o `validate.avaliar`
+espera **exatamente a resposta** (N dígitos por campo, separados por `" - "`). Resultado: página
+real de canhoto (nota + CNPJ + data + quantidade) → 100% "Não reconhecido"; tipo `pedido`
+(2 campos) impossível em modo OCR. Imagem limpa (só o número) funcionava — por isso passou
+despercebido.
+
+**Correção (escolha do Gabriel: reader estruturado + seletor):**
+
+1. **Readers OCR passam a devolver `valor` com estrutura de linha**, não dígitos colados:
+   - `rapidocr_reader.py`: `valor = "\n".join(textos)` (uma linha por segmento detectado).
+   - `tesseract_reader.py`: `valor = " ".join(t for t, _ in tokens)` (psm 7 = uma linha só).
+   - `trocr_reader.py`: `valor = texto` (a linha decodificada, sem filtrar dígitos).
+   - `mistral_reader.py`: `valor = texto` (o markdown das páginas juntado, sem filtrar).
+   - `openai_reader.py`: **já** devolve `valor = texto` (resposta do modelo) — sem mudança.
+   - `bruto` continua sendo a saída crua de cada motor (pra log/debug).
+   - Testes dos readers: os asserts de `valor` mudam de `"349498"` pra a string de linha
+     (ex. `"NF 3494\n98"`); onde havia `assert r.valor == "349498"` vira
+     `assert "349498" in re.sub(r"\D", "", r.valor)`.
+
+2. **Novo `leitor_lote/selecao.py`** — `escolher(r, tipo, seq_esperada, intervalo_maximo) -> Reading`:
+   pega o `Reading` ruidoso e devolve um `Reading` com `valor` = a(s) resposta(s) por campo
+   juntadas por `" - "` (pronto pro `avaliar`). Mantém `confianca`/`motor`/`bruto`.
+
+   ```python
+   from __future__ import annotations
+
+   import re
+
+   from leitor_lote.models import Reading, Tipo
+
+
+   def _digitos(s: str) -> str:
+       return re.sub(r"\D", "", s)
+
+
+   def _janelas(digitos: str, n: int) -> list[str]:
+       return [digitos[i : i + n] for i in range(len(digitos) - n + 1)]
+
+
+   def escolher(
+       r: Reading, tipo: Tipo, seq_esperada: int | None, intervalo_maximo: int | None
+   ) -> Reading:
+       n = len(tipo.campos)
+       # caminho IA: o motor já entregou "<a> - <b>" estruturado -> repassa intacto
+       partes = [p.strip() for p in r.valor.split(" - ")]
+       if len(partes) == n and all(_digitos(p) for p in partes):
+           return r
+
+       faixa = None
+       if seq_esperada is not None and intervalo_maximo is not None:
+           faixa = (seq_esperada - intervalo_maximo, seq_esperada + intervalo_maximo)
+
+       linhas = [ln.strip() for ln in r.valor.replace(" - ", "\n").splitlines() if ln.strip()]
+       linhas = linhas or [r.valor]
+
+       usadas: set[int] = set()
+       escolhidos: list[str] = []
+       for campo in tipo.campos:
+           alvo = campo.tamanho
+           cands: list[tuple[str, int, bool]] = []  # (numero, idx_linha, linha_limpa)
+           for i, ln in enumerate(linhas):
+               if i in usadas:
+                   continue
+               d = _digitos(ln)
+               if len(d) == alvo:
+                   cands.append((d, i, True))
+               else:
+                   cands.extend((w, i, False) for w in _janelas(d, alvo))
+
+           def rank(c: tuple[str, int, bool]) -> tuple[bool, bool]:
+               num, _, limpa = c
+               na_faixa = bool(faixa and campo.sequencial and faixa[0] <= int(num) <= faixa[1])
+               return (na_faixa, limpa)  # maior = melhor
+
+           if cands:
+               num, idx, _ = max(cands, key=rank)
+               escolhidos.append(num)
+               usadas.add(idx)
+           else:
+               escolhidos.append("")  # nada plausível -> avaliar() marca "Não reconhecido"
+
+       return Reading(
+           valor=" - ".join(escolhidos), confianca=r.confianca, motor=r.motor, bruto=r.bruto
+       )
+   ```
+
+3. **`pipeline._melhor_de_paginas`** passa a chamar `escolher` entre `reader.read` e `avaliar`:
+   ```python
+   from leitor_lote.selecao import escolher
+   ...
+   def _melhor_de_paginas(reader, paginas, tipo, p):
+       melhor = None
+       for img in paginas:
+           bruta = reader.read(img, tipo)
+           leitura = escolher(bruta, tipo, p.seq_esperada, p.intervalo_maximo)
+           v = avaliar(leitura, tipo, p.seq_esperada, p.intervalo_maximo)
+           if v.aprovado:
+               return leitura, v
+           melhor = melhor or (leitura, v)
+       return melhor
+   ```
+
+4. **`tests/test_selecao.py`** cobre:
+   - canhoto (1×6): `"NF 349498\ncnpj 12.345.678/0001-99\n03/09/2026"` → `"349498"`.
+   - canhoto onde só janela serve: `"3494981234"` → sem faixa pega a 1ª janela `"349498"`;
+     com `seq=383400,intervalo=1000` numa linha `"803464 349498"` → pega `"349498"`? não —
+     `803464` está fora, `349498` também; teste com `"382900 349498"` e faixa 383400±1000 →
+     `"382900"` (dentro).
+   - pedido (2×6) OCR: `"doc 349498\nnota 383462"` → `"349498 - 383462"`, campos distintos
+     (linha não reusada).
+   - pedido IA estruturado: `Reading("349498 - 383462")` → devolvido intacto.
+   - nada plausível: `"sem numero aqui"` canhoto → `"" ` → `avaliar` reprova.
+   - `escolher` preserva `confianca`/`motor`/`bruto`.
+
+**Testes que mudam junto:** `test_rapidocr_reader.py`, `test_tesseract_reader.py`,
+`test_trocr_reader.py`, `test_mistral_reader.py` (asserts de `valor`), `test_pipeline.py`
+(o fake reader agora pode devolver `valor` multi-linha; os testes existentes com `valor="349498"`
+continuam válidos — `escolher` numa linha só com 6 dígitos devolve `"349498"`).
+
+**Commit:** `fix: readers OCR devolvem linhas + selecao.escolher extrai a resposta (B1)`.
 
 ---
 

@@ -172,7 +172,7 @@ git commit -m "chore: scaffold do projeto (uv, pytest, ruff)"
 - Produces:
   - `Reading(valor: str, confianca: float | None, motor: str, bruto: str)` — `frozen`
   - `PreparedImage(bytes_: bytes, mimetype: str, largura: int, altura: int, caminho_tmp: Path)` — `frozen`
-  - `Campo(nome: str, tamanho: int = 6)` — `frozen`
+  - `Campo(nome: str, tamanho: int = 6, sequencial: bool = False)` — `frozen`. `sequencial` marca o campo que segue a sequência de notas (é nele que a regra `seq ± intervalo` se aplica na Task 3).
   - `Tipo(id: str, nome: str, prompt: str, modo: str, motor: str, campos: tuple[Campo, ...], formato_exemplo: str = "")` — `frozen`
   - `ResultadoValidado(texto_lido: str, aprovado: bool, motivo: str | None)` — `frozen`
   - `LinhaResultado(arquivo: str, texto_lido: str, confianca: float | None, motor: str, status: str, erro: str | None)` — `frozen`
@@ -204,8 +204,11 @@ def test_reading_frozen():
         r.valor = "x"  # frozen
 
 
-def test_campo_default_tamanho():
-    assert Campo(nome="numero").tamanho == 6
+def test_campo_defaults():
+    c = Campo(nome="numero")
+    assert c.tamanho == 6
+    assert c.sequencial is False
+    assert Campo(nome="nota", sequencial=True).sequencial is True
 
 
 def test_tipo_com_campos():
@@ -276,6 +279,7 @@ class PreparedImage:
 class Campo:
     nome: str
     tamanho: int = 6
+    sequencial: bool = False
 
 
 @dataclass(frozen=True)
@@ -338,7 +342,7 @@ git commit -m "feat: dataclasses de dominio (Reading, Tipo, LinhaResultado, ...)
 
 **Interfaces:**
 - Consumes: `Reading`, `Tipo`, `Campo`, `ResultadoValidado` de `leitor_lote.models`.
-- Produces: `avaliar(r: Reading, tipo: Tipo, seq_esperada: int | None, intervalo_maximo: int | None) -> ResultadoValidado`. Regras: separa `r.valor` por `" - "`; para cada `tipo.campos[i]`, limpa não-dígitos, exige exatamente `campo.tamanho` dígitos, senão o campo vira `"Não reconhecido"` (sem derrubar os outros); se `seq_esperada` e `intervalo_maximo` vierem, rejeita valor fora de `[seq-intervalo, seq+intervalo]`. `aprovado` = todos os campos ok. `texto_lido` = campos juntados por `" - "`.
+- Produces: `avaliar(r: Reading, tipo: Tipo, seq_esperada: int | None, intervalo_maximo: int | None) -> ResultadoValidado`. Regras: separa `r.valor` por `" - "`; para cada `tipo.campos[i]`, limpa não-dígitos, exige exatamente `campo.tamanho` dígitos, senão o campo vira `"Não reconhecido"` (sem derrubar os outros); se `seq_esperada` **e** `intervalo_maximo` vierem, rejeita valor fora de `[seq-intervalo, seq+intervalo]` — mas **só nos campos com `campo.sequencial == True`** (ou em todos, se nenhum campo do tipo estiver marcado `sequencial`). `aprovado` = todos os campos ok. `texto_lido` = campos juntados por `" - "`.
 
 - [ ] **Step 1: Escrever os testes**
 
@@ -351,6 +355,9 @@ CANHOTO = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="auto", motor="padd
                campos=(Campo("numero", 6),))
 PEDIDO = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
               campos=(Campo("documento", 6), Campo("nota", 6)))
+PEDIDO_SEQ = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
+                  campos=(Campo("documento", 6, sequencial=False),
+                          Campo("nota", 6, sequencial=True)))
 
 
 def _r(valor: str) -> Reading:
@@ -392,6 +399,27 @@ def test_faixa_fora():
     assert v.aprovado is False
     assert v.texto_lido == "Não reconhecido"
     assert "fora" in v.motivo
+
+
+def test_faixa_exige_ambos_parametros():
+    # só seq, sem intervalo -> a regra de faixa é pulada
+    v = avaliar(_r("803464"), CANHOTO, 383400, None)
+    assert v.aprovado is True
+
+
+def test_faixa_limite_inclusivo():
+    v = avaliar(_r("384400"), CANHOTO, 383400, 1000)  # exatamente seq + intervalo
+    assert v.aprovado is True
+
+
+def test_faixa_so_no_campo_sequencial():
+    # documento longe da sequência NÃO reprova; nota fora da faixa reprova
+    ok = avaliar(_r("999999 - 383462"), PEDIDO_SEQ, 383400, 1000)
+    assert ok.texto_lido == "999999 - 383462"
+    assert ok.aprovado is True
+    ruim = avaliar(_r("999999 - 803464"), PEDIDO_SEQ, 383400, 1000)
+    assert ruim.texto_lido == "999999 - Não reconhecido"
+    assert ruim.aprovado is False
 ```
 
 - [ ] **Step 2: Rodar e ver falhar**
@@ -426,6 +454,9 @@ def avaliar(
     if len(partes) < n:
         partes = partes + [""] * (n - len(partes))
 
+    checa_faixa = seq_esperada is not None and intervalo_maximo is not None
+    algum_sequencial = any(c.sequencial for c in tipo.campos)
+
     saidas: list[str] = []
     motivos: list[str] = []
     for campo, parte in zip(tipo.campos, partes[:n]):
@@ -434,7 +465,8 @@ def avaliar(
             saidas.append(NAO_RECONHECIDO)
             motivos.append(f"{campo.nome}: {len(d)} dígitos (esperado {campo.tamanho})")
             continue
-        if seq_esperada is not None and intervalo_maximo is not None:
+        aplica_faixa = checa_faixa and (campo.sequencial or not algum_sequencial)
+        if aplica_faixa:
             valor = int(d)
             lo, hi = seq_esperada - intervalo_maximo, seq_esperada + intervalo_maximo
             if not (lo <= valor <= hi):
@@ -454,7 +486,7 @@ def avaliar(
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `uv run pytest tests/test_validate.py -v`
-Expected: PASS (6 passed)
+Expected: PASS (9 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -491,7 +523,7 @@ git commit -m "feat: validacao deterministica de N dígitos + faixa seq±interva
     "modo": "auto",
     "motor": "paddleocr",
     "prompt": "Leia APENAS o número de 6 dígitos do canhoto. Responda só os dígitos, sem texto.",
-    "campos": [{ "nome": "numero", "tamanho": 6 }],
+    "campos": [{ "nome": "numero", "tamanho": 6, "sequencial": true }],
     "formato_exemplo": "349498"
   },
   {
@@ -500,7 +532,10 @@ git commit -m "feat: validacao deterministica de N dígitos + faixa seq±interva
     "modo": "auto",
     "motor": "paddleocr",
     "prompt": "Leia o número do documento (impresso) e o número da nota (manuscrito), ambos com 6 dígitos. Responda no formato '<documento> - <nota>', só dígitos.",
-    "campos": [{ "nome": "documento", "tamanho": 6 }, { "nome": "nota", "tamanho": 6 }],
+    "campos": [
+      { "nome": "documento", "tamanho": 6, "sequencial": false },
+      { "nome": "nota", "tamanho": 6, "sequencial": true }
+    ],
     "formato_exemplo": "349498 - 383462"
   }
 ]
@@ -553,6 +588,8 @@ def test_buscar_tipos_usa_fallback_quando_url_falha(_paths, monkeypatch):
     assert set(tipos) == {"canhoto", "pedido"}
     assert isinstance(tipos["canhoto"], Tipo)
     assert tipos["pedido"].campos[1].nome == "nota"
+    assert tipos["pedido"].campos[1].sequencial is True
+    assert tipos["pedido"].campos[0].sequencial is False
 
 
 def test_buscar_tipos_parseia_resposta_http(_paths, monkeypatch):
@@ -639,8 +676,15 @@ def salvar(c: Config) -> None:
 def _parse_tipos(raw: list[dict]) -> dict[str, Tipo]:
     out: dict[str, Tipo] = {}
     for t in raw:
-        campos_raw = t.get("campos") or [{"nome": "numero", "tamanho": 6}]
-        campos = tuple(Campo(nome=c["nome"], tamanho=int(c.get("tamanho", 6))) for c in campos_raw)
+        campos_raw = t.get("campos") or [{"nome": "numero", "tamanho": 6, "sequencial": True}]
+        campos = tuple(
+            Campo(
+                nome=c["nome"],
+                tamanho=int(c.get("tamanho", 6)),
+                sequencial=bool(c.get("sequencial", False)),
+            )
+            for c in campos_raw
+        )
         out[t["id"]] = Tipo(
             id=t["id"],
             nome=t["nome"],

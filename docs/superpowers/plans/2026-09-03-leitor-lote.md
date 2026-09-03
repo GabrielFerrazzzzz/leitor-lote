@@ -812,15 +812,15 @@ def test_para_ocr_aplica_threshold(png_pequeno, monkeypatch):
     assert chamado["n"] == 0
 
 
-def test_deskew_nao_gira_imagem_alinhada(tmp_path):
-    from PIL import Image, ImageDraw
+def test_deskew_nao_rotaciona_imagem_alinhada():
+    import numpy as np
 
-    p = tmp_path / "barra.png"
-    img = Image.new("RGB", (600, 200), "white")
-    ImageDraw.Draw(img).rectangle([40, 90, 560, 110], fill="black")  # barra horizontal já alinhada
-    img.save(p)
-    out = preprocess.preparar(p, para_ocr=True)[0]
-    assert out.largura > out.altura  # continua paisagem — não sofreu quarto de volta
+    from leitor_lote.preprocess import _deskew
+
+    arr = np.full((200, 600), 255, dtype=np.uint8)
+    arr[95:105, 40:560] = 0  # barra horizontal já alinhada, tinta suficiente
+    # nada a corrigir -> devolve o MESMO array (a normalização antiga giraria 90°)
+    assert np.array_equal(_deskew(arr), arr)
 
 
 def test_descarta_temporarios(png_pequeno):
@@ -829,6 +829,7 @@ def test_descarta_temporarios(png_pequeno):
     assert all(c.exists() for c in caminhos)
     preprocess.descartar(out)
     assert not any(c.exists() for c in caminhos)
+    preprocess.descartar(out)  # 2ª vez não levanta (missing_ok)
 ```
 
 - [ ] **Step 3: Rodar e ver falhar**
@@ -920,6 +921,8 @@ def preparar(arquivo: Path, *, para_ocr: bool) -> list[PreparedImage]:
 
 def descartar(imagens: Iterable[PreparedImage]) -> None:
     for img in imagens:
+        if not img.caminho_tmp:
+            continue
         try:
             Path(img.caminho_tmp).unlink(missing_ok=True)
         except OSError:

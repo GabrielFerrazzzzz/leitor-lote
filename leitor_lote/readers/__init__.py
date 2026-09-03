@@ -4,13 +4,13 @@ from leitor_lote.readers.base import Reader
 
 MOTORES_IDS: list[str] = [
     "tesseract",
-    "paddleocr",
+    "rapidocr",
     "trocr",
     "openai:gpt-5-mini",
     "openai:gpt-5",
     "mistral-ocr",
 ]
-LOCAIS: set[str] = {"tesseract", "paddleocr", "trocr"}
+LOCAIS: set[str] = {"tesseract", "rapidocr", "trocr"}
 
 
 def resolve(motor_id: str, config) -> Reader:
@@ -19,10 +19,10 @@ def resolve(motor_id: str, config) -> Reader:
         from leitor_lote.readers.tesseract_reader import TesseractReader
 
         return TesseractReader()
-    if base == "paddleocr":
-        from leitor_lote.readers.paddleocr_reader import PaddleOcrReader
+    if base == "rapidocr":
+        from leitor_lote.readers.rapidocr_reader import RapidOcrReader
 
-        return PaddleOcrReader()
+        return RapidOcrReader()
     if base == "trocr":
         from leitor_lote.readers.trocr_reader import TrOcrReader
 

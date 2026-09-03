@@ -29,4 +29,4 @@ def test_disponivel_por_chave():
     assert readers.disponivel("openai:gpt-5-mini", Config(chave_openai="sk-x")) is True
     assert readers.disponivel("openai:gpt-5-mini", Config()) is False
     assert readers.disponivel("mistral-ocr", Config()) is False
-    assert readers.disponivel("paddleocr", Config()) is True
+    assert readers.disponivel("rapidocr", Config()) is True

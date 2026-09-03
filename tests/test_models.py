@@ -34,7 +34,7 @@ def test_tipo_com_campos():
         nome="Canhoto",
         prompt="leia o numero",
         modo="auto",
-        motor="paddleocr",
+        motor="rapidocr",
         campos=(Campo("numero", 6),),
     )
     assert t.formato_exemplo == ""
@@ -50,7 +50,7 @@ def test_demais_dataclasses_constroem():
     ParametrosRodada(
         pasta_entrada=Path("."),
         tipo_id="canhoto",
-        motor_id="paddleocr",
+        motor_id="rapidocr",
         modo="auto",
         seq_esperada=None,
         intervalo_maximo=None,

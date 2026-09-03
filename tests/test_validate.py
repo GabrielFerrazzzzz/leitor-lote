@@ -1,11 +1,11 @@
 from leitor_lote.models import Campo, Reading, Tipo
 from leitor_lote.validate import avaliar
 
-CANHOTO = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="auto", motor="paddleocr",
+CANHOTO = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="auto", motor="rapidocr",
                campos=(Campo("numero", 6),))
-PEDIDO = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
+PEDIDO = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="rapidocr",
               campos=(Campo("documento", 6), Campo("nota", 6)))
-PEDIDO_SEQ = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
+PEDIDO_SEQ = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="rapidocr",
                   campos=(Campo("documento", 6, sequencial=False),
                           Campo("nota", 6, sequencial=True)))
 

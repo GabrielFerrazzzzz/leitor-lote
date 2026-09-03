@@ -58,7 +58,7 @@ def _parse_tipos(raw: list[dict]) -> dict[str, Tipo]:
             nome=t["nome"],
             prompt=t["prompt"],
             modo=t.get("modo", "auto"),
-            motor=t.get("motor", "paddleocr"),
+            motor=t.get("motor", "rapidocr"),
             campos=campos,
             formato_exemplo=t.get("formato_exemplo", ""),
         )

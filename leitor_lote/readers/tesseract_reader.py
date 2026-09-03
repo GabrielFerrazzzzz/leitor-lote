@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+
 import pytesseract
 from PIL import Image
 
@@ -13,7 +15,7 @@ class TesseractReader:
     requer_chave = False
 
     def disponivel(self, config) -> bool:
-        return True
+        return shutil.which("tesseract") is not None
 
     def read(self, imagem: PreparedImage, tipo: Tipo) -> Reading:
         with Image.open(imagem.caminho_tmp) as img:

@@ -100,6 +100,17 @@ def test_respeita_limite_de_concorrencia(tmp_path, monkeypatch):
     assert ativos["max"] <= 3
 
 
+def test_ia_sem_chave_erra_claro(tmp_path):
+    pasta = _pasta(tmp_path, 1)
+    with pytest.raises(ValueError):
+        pipeline.rodar(
+            _params(pasta, modo="ia", motor="openai:gpt-5-mini"),
+            Config(),
+            TIPOS,
+            lambda f, t: None,
+        )
+
+
 def test_cancelado_marca_erro(tmp_path, monkeypatch):
     pasta = _pasta(tmp_path, 4)
     monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))

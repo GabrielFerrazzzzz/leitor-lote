@@ -16,7 +16,7 @@ Lê uma pasta de canhotos (imagens `.jpg/.png` e PDFs), extrai o número de cada
 
 | Motor | Chave? | Observação |
 |---|---|---|
-| `tesseract` | não | embutido; bom no número impresso |
+| `tesseract` | não | requer Tesseract instalado no PATH (não vai no pacote nesta versão); bom no número impresso |
 | `rapidocr` | não | embutido; melhor OCR tradicional grátis |
 | `trocr` | não | baixa ~1,3 GB no 1º uso (precisa de internet uma vez) |
 | `openai:gpt-5-mini` / `openai:gpt-5` | sim | cole a chave em **Configurar chaves…** |

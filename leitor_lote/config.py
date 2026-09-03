@@ -28,9 +28,23 @@ class Config:
 
 def carregar() -> Config:
     if CONFIG_PATH.exists():
-        data = json.loads(CONFIG_PATH.read_text("utf-8"))
+        try:
+            data = json.loads(CONFIG_PATH.read_text("utf-8"))
+        except (json.JSONDecodeError, OSError):
+            c = Config()
+            salvar(c)
+            return c
         campos = Config.__dataclass_fields__
-        return Config(**{k: v for k, v in data.items() if k in campos})
+        c = Config(**{k: v for k, v in data.items() if k in campos})
+        try:
+            c.concorrencia = int(c.concorrencia)
+        except (TypeError, ValueError):
+            c.concorrencia = 5
+        try:
+            c.limiar_confianca = float(c.limiar_confianca)
+        except (TypeError, ValueError):
+            c.limiar_confianca = 0.6
+        return c
     c = Config()
     salvar(c)
     return c

@@ -15,8 +15,6 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - name: Instalar Tesseract
-        run: choco install -y tesseract
       - run: uv sync --extra dev
       - run: uv run pyinstaller leitor-lote.spec
       - name: Zipar

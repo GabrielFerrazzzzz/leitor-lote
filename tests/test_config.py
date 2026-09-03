@@ -64,6 +64,22 @@ def test_buscar_tipos_parseia_resposta_http(_paths, monkeypatch):
     assert tipos["x"].modo == "ocr"
 
 
+def test_carregar_config_corrompido_reescreve_default(_paths):
+    _paths.mkdir(parents=True, exist_ok=True)
+    cfgmod.CONFIG_PATH.write_text("{ not json", "utf-8")
+    c = cfgmod.carregar()
+    assert isinstance(c, cfgmod.Config)
+    assert c.concorrencia == 5
+    # o arquivo corrompido foi reescrito com JSON válido
+    assert json.loads(cfgmod.CONFIG_PATH.read_text("utf-8"))["concorrencia"] == 5
+
+
+def test_carregar_coage_concorrencia_invalida(_paths):
+    _paths.mkdir(parents=True, exist_ok=True)
+    cfgmod.CONFIG_PATH.write_text(json.dumps({"concorrencia": "cinco"}), "utf-8")
+    assert cfgmod.carregar().concorrencia == 5
+
+
 def test_chave_nunca_alem_do_config(_paths):
     # a chave mora no config.json e em lugar nenhum mais; garante que salvar()
     # nao vaza pra stdout/log (aqui: nao ha outra escrita)

@@ -146,6 +146,10 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         messagebox.showerror("leitor-lote", f"A rodada falhou:\n{msg}")
         btn.config(text="Rodar", command=executar, state="normal")
 
+    def _cancelado() -> None:
+        status.config(text="Cancelado")
+        btn.config(text="Rodar", command=executar, state="normal")
+
     def _abrir(p: Path) -> None:
         import os
 
@@ -169,6 +173,9 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         def trabalho() -> None:
             try:
                 linhas = rodar(p, cfg, tipos, progresso, cancel)
+                if cancel.is_set():
+                    root.after(0, _cancelado)
+                    return
                 concluir(linhas, saida)
             except Exception as e:  # noqa: BLE001
                 root.after(0, lambda err=e: _erro_fatal(str(err)))

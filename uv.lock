@@ -291,6 +291,7 @@ source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "numpy" },
+    { name = "opencv-python" },
     { name = "pillow" },
     { name = "pypdfium2" },
     { name = "pytesseract" },
@@ -310,6 +311,7 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "opencv-python", specifier = ">=4.10" },
     { name = "pillow", specifier = ">=10.4" },
     { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.10" },
     { name = "pypdfium2", specifier = ">=4.30" },

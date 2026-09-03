@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+
 from leitor_lote.readers.base import Reader
 
 MOTORES_IDS: list[str] = [
@@ -44,4 +46,6 @@ def disponivel(motor_id: str, config) -> bool:
         return bool(config.chave_openai)
     if base == "mistral-ocr":
         return bool(config.chave_mistral)
+    if base == "tesseract":
+        return shutil.which("tesseract") is not None
     return True

@@ -12,6 +12,7 @@ dependencies = [
     "torch>=2.4",
     "httpx>=0.27",
     "rapidocr-onnxruntime>=1.4.4",
+    "opencv-python>=4.10",
 ]
 
 [project.optional-dependencies]

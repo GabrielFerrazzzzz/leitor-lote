@@ -70,6 +70,10 @@ def rodar(
     progresso: Callable[[int, int], None],
     cancel: threading.Event | None = None,
 ) -> list[LinhaResultado]:
+    if not disponivel(p.motor_id, cfg):
+        raise ValueError(
+            f"O motor {p.motor_id} precisa de uma chave de API. Use 'Configurar chaves…'."
+        )
     cancel = cancel or threading.Event()
     tipo = tipos[p.tipo_id]
     arquivos = _arquivos(p.pasta_entrada)

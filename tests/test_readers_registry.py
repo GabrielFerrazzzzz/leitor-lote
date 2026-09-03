@@ -1,3 +1,5 @@
+import shutil
+
 import pytest
 
 from leitor_lote import readers
@@ -30,3 +32,4 @@ def test_disponivel_por_chave():
     assert readers.disponivel("openai:gpt-5-mini", Config()) is False
     assert readers.disponivel("mistral-ocr", Config()) is False
     assert readers.disponivel("rapidocr", Config()) is True
+    assert readers.disponivel("tesseract", Config()) == (shutil.which("tesseract") is not None)

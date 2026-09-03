@@ -1,0 +1,22 @@
+name: build
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+      - name: Instalar Tesseract
+        run: choco install -y tesseract
+      - run: uv sync --extra dev
+      - run: uv run pyinstaller leitor-lote.spec
+      - name: Zipar
+        run: Compress-Archive -Path dist/leitor-lote/* -DestinationPath leitor-lote-${{ github.ref_name }}.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: leitor-lote-*.zip

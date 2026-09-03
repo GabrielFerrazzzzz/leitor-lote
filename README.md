@@ -43,7 +43,7 @@ A lista de tipos de leitura é buscada de
     "modo": "auto",
     "motor": "rapidocr",
     "prompt": "Leia APENAS o número de 6 dígitos...",
-    "campos": [{ "nome": "numero", "tamanho": 6 }],
+    "campos": [{ "nome": "numero", "tamanho": 6, "sequencial": true }],
     "formato_exemplo": "349498"
   }
 ]

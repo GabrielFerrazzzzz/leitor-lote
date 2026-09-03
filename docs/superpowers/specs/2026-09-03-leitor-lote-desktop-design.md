@@ -3,6 +3,12 @@
 **Data:** 2026-09-03
 **Status:** aprovado (brainstorming), pronto pra virar plano de implementação
 
+> **Nota de implementação (2026-09-03):** onde este documento diz **PaddleOCR**, leia **RapidOCR**
+> (`rapidocr-onnxruntime`). Durante a execução descobriu-se que `paddleocr`/`paddlepaddle` não rodam
+> no Windows (erro de oneDNN, `ConvertPirAttribute2RuntimeAttribute`). O RapidOCR usa os mesmos
+> modelos PP-OCR via `onnxruntime`, sem PaddlePaddle. O id do motor é `rapidocr`. Detalhes no plano
+> (`docs/superpowers/plans/2026-09-03-leitor-lote.md`) e no `README.md`.
+
 ---
 
 ## 1. Contexto e motivação

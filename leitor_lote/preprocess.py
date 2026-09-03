@@ -79,6 +79,8 @@ def preparar(arquivo: Path, *, para_ocr: bool) -> list[PreparedImage]:
 
 def descartar(imagens: Iterable[PreparedImage]) -> None:
     for img in imagens:
+        if not img.caminho_tmp:
+            continue
         try:
             Path(img.caminho_tmp).unlink(missing_ok=True)
         except OSError:

@@ -73,8 +73,9 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
 
     def atualizar_motores(*_a) -> None:
         opts = opcoes_motor(modo_var.get(), cfg)
-        cb_motor["values"] = [m for m, _ in opts]
         habilitados = [m for m, ok in opts if ok]
+        # só mostra o que dá pra usar; se nada tem chave, mostra todos (o Rodar avisa)
+        cb_motor["values"] = habilitados or [m for m, _ in opts]
         if motor_var.get() not in habilitados and habilitados:
             motor_var.set(habilitados[0])
 
@@ -127,40 +128,50 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         pct = 0 if total == 0 else int(100 * feitos / total)
         root.after(0, lambda: (barra.config(value=pct), status.config(text=f"{feitos} de {total}")))
 
-    def concluir(linhas) -> None:
+    def concluir(linhas, saida: Path) -> None:
         from leitor_lote.output import gravar
 
-        saida = Path(pasta_var.get()) / "saida"
         gravar(linhas, saida)
         ok = sum(1 for x in linhas if x.status == "ok")
         nr = sum(1 for x in linhas if x.status == "nao_reconhecido")
         er = sum(1 for x in linhas if x.status == "erro")
-        cfg.ultima_pasta = pasta_var.get()
-        cfgmod.salvar(cfg)
         root.after(0, lambda: _fim(saida, ok, nr, er))
 
     def _fim(saida: Path, ok: int, nr: int, er: int) -> None:
         status.config(text=f"Concluído — {ok} ok, {nr} não reconhecidos, {er} erros")
         btn.config(text="Abrir pasta de saída", command=lambda: _abrir(saida), state="normal")
 
+    def _erro_fatal(msg: str) -> None:
+        status.config(text="Falhou")
+        messagebox.showerror("leitor-lote", f"A rodada falhou:\n{msg}")
+        btn.config(text="Rodar", command=executar, state="normal")
+
     def _abrir(p: Path) -> None:
         import os
 
-        os.startfile(p)  # Windows: abre a pasta no Explorer
+        os.startfile(p)  # Windows
 
     def executar() -> None:
-        if not pasta_var.get() or not Path(pasta_var.get()).is_dir():
+        pasta = pasta_var.get()
+        if not pasta or not Path(pasta).is_dir():
             messagebox.showerror("leitor-lote", "Escolha uma pasta válida.")
             return
-        btn.config(state="disabled")
+        cancel.clear()
+        saida = Path(pasta) / "saida"
         p = montar_parametros(
-            pasta_var.get(), tipo_var.get(), motor_var.get(), modo_var.get(),
+            pasta, tipo_var.get(), motor_var.get(), modo_var.get(),
             seq_var.get(), int_var.get(),
         )
+        cfg.ultima_pasta = pasta
+        cfgmod.salvar(cfg)
+        btn.config(text="Cancelar", command=cancel.set)  # segue habilitado durante a rodada
 
         def trabalho() -> None:
-            linhas = rodar(p, cfg, tipos, progresso, cancel)
-            concluir(linhas)
+            try:
+                linhas = rodar(p, cfg, tipos, progresso, cancel)
+                concluir(linhas, saida)
+            except Exception as e:  # noqa: BLE001
+                root.after(0, lambda err=e: _erro_fatal(str(err)))
 
         threading.Thread(target=trabalho, daemon=True).start()
 

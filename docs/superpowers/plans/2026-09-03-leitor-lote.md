@@ -4,9 +4,11 @@
 
 **Goal:** Um executável de desktop Windows, em Python, que lê uma pasta de canhotos (imagens/PDFs), extrai o número de cada um por OCR ou IA (motor escolhível), valida, e grava cópias renomeadas + `resultado.csv` + `log.txt` — 100% local, sem backend.
 
-**Architecture:** Aplicação Python em camadas isoladas: `preprocess` normaliza a imagem, um `Reader` plugável (Tesseract / PaddleOCR / TrOCR / OpenAI / Mistral OCR) devolve um `Reading`, `validate` aplica a regra determinística de 6 dígitos + faixa, `pipeline` orquestra num pool de concorrência limitada, `output` grava os arquivos. Uma janela Tkinter é a única interface. Um `bench/benchmark.py` separado compara os motores contra um gabarito real.
+**Architecture:** Aplicação Python em camadas isoladas: `preprocess` normaliza a imagem, um `Reader` plugável (Tesseract / RapidOCR / TrOCR / OpenAI / Mistral OCR) devolve um `Reading`, `validate` aplica a regra determinística de 6 dígitos + faixa, `pipeline` orquestra num pool de concorrência limitada, `output` grava os arquivos. Uma janela Tkinter é a única interface. Um `bench/benchmark.py` separado compara os motores contra um gabarito real.
 
-**Tech Stack:** Python 3.12, `uv`, Tkinter/ttk, Pillow, `opencv-python-headless`, NumPy, `pypdfium2`, `pytesseract` (+ binário Tesseract empacotado), `paddleocr` + `paddlepaddle` (CPU), `transformers` + `torch` (CPU, só TrOCR), `httpx`, `pytest`, `pyinstaller`, `ruff`.
+**Tech Stack:** Python 3.12, `uv`, Tkinter/ttk, Pillow, `opencv-python` (via RapidOCR), NumPy, `pypdfium2`, `pytesseract` (+ binário Tesseract empacotado), `rapidocr-onnxruntime` (modelos PP-OCR via `onnxruntime`, sem PaddlePaddle), `transformers` + `torch` (CPU, só TrOCR), `httpx`, `pytest`, `pyinstaller`, `ruff`.
+
+> **Nota (2026-09-03):** o plano original usava `paddleocr` + `paddlepaddle`; o par resolvido (3.4.1 / 3.3.1) **não roda no Windows** (`NotImplementedError: ConvertPirAttribute2RuntimeAttribute` no oneDNN, tanto `.predict()` quanto `.ocr()`). Trocado por `rapidocr-onnxruntime` — mesmos modelos PP-OCR, runtime `onnxruntime`. O motor passou a se chamar **`rapidocr`**.
 
 ## Global Constraints
 
@@ -23,7 +25,7 @@
 - **Validação dirigida por `tipo.campos`** (cada campo tem `tamanho`, default 6). A regra de faixa `seq_esperada ± intervalo_maximo` é determinística (não é dica de prompt).
 - **PDF sempre rasterizado** (`pypdfium2`, 300 dpi). Todo `Reader` recebe imagem, nunca PDF.
 - **Fora de escopo:** EasyOCR, auto-updater, CLI da aplicação principal (só a janela), keyring do Windows, multi-OS, detector de linha dedicado pro TrOCR.
-- **Readers reais não rodam no CI.** Cada reader (`tesseract`, `paddleocr`, `trocr`, `openai:*`, `mistral-ocr`) tem teste unitário com *monkeypatch* da chamada externa **+** um teste `@pytest.mark.manual` que exercita a lib de verdade.
+- **Readers reais não rodam no CI.** Cada reader (`tesseract`, `rapidocr`, `trocr`, `openai:*`, `mistral-ocr`) tem teste unitário com *monkeypatch* da chamada externa **+** um teste `@pytest.mark.manual` que exercita a lib de verdade.
 
 ---
 
@@ -47,7 +49,7 @@ leitor-lote/
       __init__.py                      # Task 6  — MOTORES_IDS, resolve(), disponivel()
       base.py                          # Task 6  — Protocol Reader
       tesseract_reader.py              # Task 7
-      paddleocr_reader.py              # Task 8
+      rapidocr_reader.py              # Task 8
       trocr_reader.py                  # Task 9
       openai_reader.py                 # Task 10
       mistral_reader.py                # Task 11
@@ -88,16 +90,16 @@ description = "Leitor de canhotos em lote, local (OCR/IA), com motor escolhivel"
 requires-python = ">=3.12"
 dependencies = [
     "pillow>=10.4",
-    "opencv-python-headless>=4.10",
     "numpy>=1.26",
     "pypdfium2>=4.30",
     "pytesseract>=0.3.13",
-    "paddleocr>=2.8",
-    "paddlepaddle>=2.6",
+    "rapidocr-onnxruntime>=1.4",
     "transformers>=4.44",
     "torch>=2.4",
     "httpx>=0.27",
 ]
+# nota: cv2 (opencv-python) vem transitivamente de rapidocr-onnxruntime — NÃO
+# adicionar opencv-python-headless (as duas distribuições juntas quebram `import cv2`)
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3", "pyinstaller>=6.10", "ruff>=0.6"]
@@ -217,7 +219,7 @@ def test_tipo_com_campos():
         nome="Canhoto",
         prompt="leia o numero",
         modo="auto",
-        motor="paddleocr",
+        motor="rapidocr",
         campos=(Campo("numero", 6),),
     )
     assert t.formato_exemplo == ""
@@ -233,7 +235,7 @@ def test_demais_dataclasses_constroem():
     ParametrosRodada(
         pasta_entrada=Path("."),
         tipo_id="canhoto",
-        motor_id="paddleocr",
+        motor_id="rapidocr",
         modo="auto",
         seq_esperada=None,
         intervalo_maximo=None,
@@ -351,11 +353,11 @@ git commit -m "feat: dataclasses de dominio (Reading, Tipo, LinhaResultado, ...)
 from leitor_lote.models import Campo, Reading, Tipo
 from leitor_lote.validate import avaliar
 
-CANHOTO = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="auto", motor="paddleocr",
+CANHOTO = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="auto", motor="rapidocr",
                campos=(Campo("numero", 6),))
-PEDIDO = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
+PEDIDO = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="rapidocr",
               campos=(Campo("documento", 6), Campo("nota", 6)))
-PEDIDO_SEQ = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
+PEDIDO_SEQ = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="rapidocr",
                   campos=(Campo("documento", 6, sequencial=False),
                           Campo("nota", 6, sequencial=True)))
 
@@ -521,7 +523,7 @@ git commit -m "feat: validacao deterministica de N dígitos + faixa seq±interva
     "id": "canhoto",
     "nome": "Canhoto",
     "modo": "auto",
-    "motor": "paddleocr",
+    "motor": "rapidocr",
     "prompt": "Leia APENAS o número de 6 dígitos do canhoto. Responda só os dígitos, sem texto.",
     "campos": [{ "nome": "numero", "tamanho": 6, "sequencial": true }],
     "formato_exemplo": "349498"
@@ -530,7 +532,7 @@ git commit -m "feat: validacao deterministica de N dígitos + faixa seq±interva
     "id": "pedido",
     "nome": "Pedido",
     "modo": "auto",
-    "motor": "paddleocr",
+    "motor": "rapidocr",
     "prompt": "Leia o número do documento (impresso) e o número da nota (manuscrito), ambos com 6 dígitos. Responda no formato '<documento> - <nota>', só dígitos.",
     "campos": [
       { "nome": "documento", "tamanho": 6, "sequencial": false },
@@ -690,7 +692,7 @@ def _parse_tipos(raw: list[dict]) -> dict[str, Tipo]:
             nome=t["nome"],
             prompt=t["prompt"],
             modo=t.get("modo", "auto"),
-            motor=t.get("motor", "paddleocr"),
+            motor=t.get("motor", "rapidocr"),
             campos=campos,
             formato_exemplo=t.get("formato_exemplo", ""),
         )
@@ -956,8 +958,8 @@ git commit -m "feat: preprocess (EXIF, resize 2000/q82, PDF->paginas, threshold+
 - Produces:
   - `readers/base.py`: `Reader` (`typing.Protocol`, `runtime_checkable`) com atributos `id: str`, `requer_chave: bool` e métodos `disponivel(self, config) -> bool`, `read(self, imagem: PreparedImage, tipo: Tipo) -> Reading`.
   - `readers/__init__.py`:
-    - `MOTORES_IDS: list[str] = ["tesseract", "paddleocr", "trocr", "openai:gpt-5-mini", "openai:gpt-5", "mistral-ocr"]`
-    - `LOCAIS: set[str] = {"tesseract", "paddleocr", "trocr"}`
+    - `MOTORES_IDS: list[str] = ["tesseract", "rapidocr", "trocr", "openai:gpt-5-mini", "openai:gpt-5", "mistral-ocr"]`
+    - `LOCAIS: set[str] = {"tesseract", "rapidocr", "trocr"}`
     - `resolve(motor_id: str, config) -> Reader` — importa o módulo do reader **sob demanda** (evita puxar torch/paddle no import). `openai:<modelo>` → `OpenAIReader(modelo=<modelo>, chave=config.chave_openai)`. `mistral-ocr` → `MistralOcrReader(chave=config.chave_mistral)`. Id desconhecido → `ValueError`.
     - `disponivel(motor_id: str, config) -> bool` — `openai:*` exige `config.chave_openai`; `mistral-ocr` exige `config.chave_mistral`; locais sempre `True`.
   - `tests/fakes.py`: `FakeReader(valor="349498", confianca=0.9, falhar=False)` implementando `Reader`.
@@ -1021,7 +1023,7 @@ def test_disponivel_por_chave():
     assert readers.disponivel("openai:gpt-5-mini", Config(chave_openai="sk-x")) is True
     assert readers.disponivel("openai:gpt-5-mini", Config()) is False
     assert readers.disponivel("mistral-ocr", Config()) is False
-    assert readers.disponivel("paddleocr", Config()) is True
+    assert readers.disponivel("rapidocr", Config()) is True
 ```
 
 - [ ] **Step 3: Rodar e ver falhar**
@@ -1058,13 +1060,13 @@ from leitor_lote.readers.base import Reader
 
 MOTORES_IDS: list[str] = [
     "tesseract",
-    "paddleocr",
+    "rapidocr",
     "trocr",
     "openai:gpt-5-mini",
     "openai:gpt-5",
     "mistral-ocr",
 ]
-LOCAIS: set[str] = {"tesseract", "paddleocr", "trocr"}
+LOCAIS: set[str] = {"tesseract", "rapidocr", "trocr"}
 
 
 def resolve(motor_id: str, config) -> Reader:
@@ -1073,10 +1075,10 @@ def resolve(motor_id: str, config) -> Reader:
         from leitor_lote.readers.tesseract_reader import TesseractReader
 
         return TesseractReader()
-    if base == "paddleocr":
-        from leitor_lote.readers.paddleocr_reader import PaddleOcrReader
+    if base == "rapidocr":
+        from leitor_lote.readers.rapidocr_reader import RapidOcrReader
 
-        return PaddleOcrReader()
+        return RapidOcrReader()
     if base == "trocr":
         from leitor_lote.readers.trocr_reader import TrOcrReader
 
@@ -1224,27 +1226,35 @@ git commit -m "feat: TesseractReader (pytesseract, psm 7, whitelist de digitos)"
 
 ---
 
-### Task 8: `PaddleOcrReader`
+### Task 8: `RapidOcrReader`
 
 **Files:**
-- Create: `leitor_lote/readers/paddleocr_reader.py`
-- Create: `tests/test_paddleocr_reader.py`
+- Create: `leitor_lote/readers/rapidocr_reader.py`
+- Create: `tests/test_rapidocr_reader.py`
 
 **Interfaces:**
-- Consumes: `PreparedImage`, `Reading`, `Tipo`; `paddleocr.PaddleOCR`.
-- Produces: `PaddleOcrReader` (`id="paddleocr"`, `requer_chave=False`). Engine carregada uma vez via `functools.cache` em `_engine()`. `read()` chama `_engine().ocr(caminho, cls=True)`, extrai só dígitos dos textos em `valor`, média dos scores em `confianca`, `bruto` = `str(linhas)`.
+- Consumes: `PreparedImage`, `Reading`, `Tipo`; `rapidocr_onnxruntime.RapidOCR`.
+- Produces: `RapidOcrReader` (`id="rapidocr"`, `requer_chave=False`). Engine via `functools.cache` em `_engine()` → `RapidOCR()`. `read()` chama `_engine()(caminho)`, que devolve a tupla `(resultado, elapse)`; `resultado` é `None` (nada detectado) ou uma lista de linhas `[box, texto, score]`. `valor` = só dígitos de todos os `texto` concatenados; `confianca` = média dos `score` (`None` se lista vazia); `bruto` = `str(linhas)`.
+
+**Contexto (API real do RapidOCR 1.4.x, verificada em 2026-09-03):**
+```python
+result, elapse = RapidOCR()("num.png")
+# result == [[[[29.0,36.0],[66.0,36.0],[66.0,47.0],[29.0,47.0]], '349498', 0.99978]]
+#            └─ box (4 pontos) ───────────────────────────────┘  └ texto ┘  └ score ┘
+# result é None quando nada é detectado; elapse é [t_det, t_cls, t_rec]
+```
 
 - [ ] **Step 1: Escrever os testes**
 
-`tests/test_paddleocr_reader.py`:
+`tests/test_rapidocr_reader.py`:
 ```python
 import pytest
 
 from leitor_lote.models import Campo, PreparedImage, Tipo
-from leitor_lote.readers import paddleocr_reader
-from leitor_lote.readers.paddleocr_reader import PaddleOcrReader
+from leitor_lote.readers import rapidocr_reader
+from leitor_lote.readers.rapidocr_reader import RapidOcrReader
 
-TIPO = Tipo(id="canhoto", nome="C", prompt="", modo="ocr", motor="paddleocr",
+TIPO = Tipo(id="canhoto", nome="C", prompt="", modo="ocr", motor="rapidocr",
             campos=(Campo("numero", 6),))
 
 
@@ -1258,14 +1268,26 @@ def _img(tmp_path):
 
 def test_read_extrai_digitos_e_media_de_score(tmp_path, monkeypatch):
     class _Eng:
-        def ocr(self, caminho, cls=True):
-            return [[[[[0, 0]], ("NF 3494", 0.9)], [[[0, 0]], ("98", 0.8)]]]
+        def __call__(self, caminho):
+            linhas = [[[[0, 0]], "NF 3494", 0.9], [[[0, 0]], "98", 0.8]]
+            return linhas, [0.1, 0.0, 0.2]
 
-    monkeypatch.setattr(paddleocr_reader, "_engine", lambda: _Eng())
-    r = PaddleOcrReader().read(_img(tmp_path), TIPO)
+    monkeypatch.setattr(rapidocr_reader, "_engine", lambda: _Eng())
+    r = RapidOcrReader().read(_img(tmp_path), TIPO)
     assert r.valor == "349498"
     assert abs(r.confianca - 0.85) < 1e-6
-    assert r.motor == "paddleocr"
+    assert r.motor == "rapidocr"
+
+
+def test_read_sem_deteccao_devolve_vazio(tmp_path, monkeypatch):
+    class _Eng:
+        def __call__(self, caminho):
+            return None, []  # RapidOCR devolve None quando não acha nada
+
+    monkeypatch.setattr(rapidocr_reader, "_engine", lambda: _Eng())
+    r = RapidOcrReader().read(_img(tmp_path), TIPO)
+    assert r.valor == ""
+    assert r.confianca is None
 
 
 @pytest.mark.manual
@@ -1278,16 +1300,16 @@ def test_read_real(tmp_path):
     img.save(p)
     pi = PreparedImage(bytes_=p.read_bytes(), mimetype="image/jpeg", largura=240, altura=80,
                        caminho_tmp=p)
-    r = PaddleOcrReader().read(pi, TIPO)
+    r = RapidOcrReader().read(pi, TIPO)
     assert "349498" in r.valor
 ```
 
 - [ ] **Step 2: Rodar e ver falhar**
 
-Run: `uv run pytest tests/test_paddleocr_reader.py -v`
+Run: `uv run pytest tests/test_rapidocr_reader.py -v`
 Expected: FAIL (`ModuleNotFoundError`)
 
-- [ ] **Step 3: Implementar `paddleocr_reader.py`**
+- [ ] **Step 3: Implementar `rapidocr_reader.py`**
 
 ```python
 from __future__ import annotations
@@ -1299,41 +1321,38 @@ from leitor_lote.models import PreparedImage, Reading, Tipo
 
 @cache
 def _engine():
-    from paddleocr import PaddleOCR
+    from rapidocr_onnxruntime import RapidOCR
 
-    return PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+    return RapidOCR()
 
 
-class PaddleOcrReader:
-    id = "paddleocr"
+class RapidOcrReader:
+    id = "rapidocr"
     requer_chave = False
 
     def disponivel(self, config) -> bool:
         return True
 
     def read(self, imagem: PreparedImage, tipo: Tipo) -> Reading:
-        res = _engine().ocr(str(imagem.caminho_tmp), cls=True)
-        linhas = res[0] if res else []
-        textos: list[str] = []
-        scores: list[float] = []
-        for _, (txt, score) in linhas:
-            textos.append(txt)
-            scores.append(float(score))
+        resultado, _ = _engine()(str(imagem.caminho_tmp))
+        linhas = resultado or []
+        textos = [linha[1] for linha in linhas]
+        scores = [float(linha[2]) for linha in linhas]
         valor = "".join(ch for ch in "".join(textos) if ch.isdigit())
         conf = (sum(scores) / len(scores)) if scores else None
-        return Reading(valor=valor, confianca=conf, motor="paddleocr", bruto=str(linhas))
+        return Reading(valor=valor, confianca=conf, motor="rapidocr", bruto=str(linhas))
 ```
 
 - [ ] **Step 4: Rodar e ver passar**
 
-Run: `uv run pytest tests/test_paddleocr_reader.py -v`
-Expected: PASS (1 passed, 1 deselected)
+Run: `uv run pytest tests/test_rapidocr_reader.py -v`
+Expected: PASS (2 passed, 1 deselected)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add leitor_lote/readers/paddleocr_reader.py tests/test_paddleocr_reader.py
-git commit -m "feat: PaddleOcrReader (engine cacheada, extrai digitos + media de score)"
+git add leitor_lote/readers/rapidocr_reader.py tests/test_rapidocr_reader.py
+git commit -m "feat: RapidOcrReader (engine cacheada, extrai digitos + media de score)"
 ```
 
 ---
@@ -1748,7 +1767,7 @@ from leitor_lote import pipeline
 from leitor_lote.config import Config
 from leitor_lote.models import Campo, ParametrosRodada, PreparedImage, Reading, Tipo
 
-CANHOTO = Tipo(id="canhoto", nome="C", prompt="", modo="auto", motor="paddleocr",
+CANHOTO = Tipo(id="canhoto", nome="C", prompt="", modo="auto", motor="rapidocr",
                campos=(Campo("numero", 6),))
 TIPOS = {"canhoto": CANHOTO}
 
@@ -1774,7 +1793,7 @@ def _prepared(tmp_path):
     return [PreparedImage(bytes_=b"x", mimetype="image/jpeg", largura=1, altura=1, caminho_tmp=p)]
 
 
-def _params(pasta, modo="ocr", motor="paddleocr"):
+def _params(pasta, modo="ocr", motor="rapidocr"):
     return ParametrosRodada(pasta_entrada=pasta, tipo_id="canhoto", motor_id=motor, modo=modo,
                             seq_esperada=None, intervalo_maximo=None)
 
@@ -1785,7 +1804,7 @@ def test_ok_simples(tmp_path, monkeypatch):
 
     class _R:
         def read(self, img, tipo):
-            return Reading(valor="349498", confianca=0.9, motor="paddleocr", bruto="")
+            return Reading(valor="349498", confianca=0.9, motor="rapidocr", bruto="")
 
     monkeypatch.setattr(pipeline, "resolve", lambda mid, cfg: _R())
     vistos = []
@@ -1801,7 +1820,7 @@ def test_auto_cai_pro_fallback_quando_ocr_reprova(tmp_path, monkeypatch):
 
     class _OCR:
         def read(self, img, tipo):
-            return Reading(valor="12", confianca=0.2, motor="paddleocr", bruto="")
+            return Reading(valor="12", confianca=0.2, motor="rapidocr", bruto="")
 
     class _IA:
         def read(self, img, tipo):
@@ -1833,7 +1852,7 @@ def test_respeita_limite_de_concorrencia(tmp_path, monkeypatch):
             time.sleep(0.02)
             with lock:
                 ativos["n"] -= 1
-            return Reading(valor="349498", confianca=0.9, motor="paddleocr", bruto="")
+            return Reading(valor="349498", confianca=0.9, motor="rapidocr", bruto="")
 
     monkeypatch.setattr(pipeline, "resolve", lambda mid, cfg: _R())
     pipeline.rodar(_params(pasta), Config(concorrencia=3), TIPOS, lambda f, t: None)
@@ -1855,7 +1874,7 @@ def test_descarta_temporarios_de_cada_arquivo(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
     monkeypatch.setattr(pipeline, "resolve",
                         lambda mid, cfg: type("R", (), {"read": lambda s, i, t:
-                            Reading(valor="349498", confianca=0.9, motor="paddleocr", bruto="")})())
+                            Reading(valor="349498", confianca=0.9, motor="rapidocr", bruto="")})())
     descartados = []
     monkeypatch.setattr(pipeline, "descartar", lambda imgs: descartados.append(list(imgs)))
     pipeline.rodar(_params(pasta), Config(), TIPOS, lambda f, t: None)
@@ -2017,7 +2036,7 @@ def _entrada(tmp_path: Path, nomes: list[str]) -> Path:
 
 def test_grava_csv_com_bom_e_cabecalho(tmp_path):
     ent = _entrada(tmp_path, ["a.jpg"])
-    linhas = [LinhaResultado("a.jpg", "349498", 0.91, "paddleocr", "ok", None)]
+    linhas = [LinhaResultado("a.jpg", "349498", 0.91, "rapidocr", "ok", None)]
     output.gravar(linhas, ent / "saida")
     csv_bytes = (ent / "saida" / "resultado.csv").read_bytes()
     assert csv_bytes[:3] == b"\xef\xbb\xbf"
@@ -2028,8 +2047,8 @@ def test_grava_csv_com_bom_e_cabecalho(tmp_path):
 def test_colisao_ganha_sufixo(tmp_path):
     ent = _entrada(tmp_path, ["a.jpg", "b.jpg"])
     linhas = [
-        LinhaResultado("a.jpg", "Não reconhecido", None, "paddleocr", "nao_reconhecido", None),
-        LinhaResultado("b.jpg", "Não reconhecido", None, "paddleocr", "nao_reconhecido", None),
+        LinhaResultado("a.jpg", "Não reconhecido", None, "rapidocr", "nao_reconhecido", None),
+        LinhaResultado("b.jpg", "Não reconhecido", None, "rapidocr", "nao_reconhecido", None),
     ]
     output.gravar(linhas, ent / "saida")
     assert (ent / "saida" / "NAO_RECONHECIDO.jpg").exists()
@@ -2059,7 +2078,7 @@ from leitor_lote.config import Config
 
 def test_opcoes_motor_ocr_so_locais():
     ids = [m for m, _ in gui.opcoes_motor("ocr", Config())]
-    assert ids == ["tesseract", "paddleocr", "trocr"]
+    assert ids == ["tesseract", "rapidocr", "trocr"]
 
 
 def test_opcoes_motor_ia_desabilita_sem_chave():
@@ -2071,10 +2090,10 @@ def test_opcoes_motor_ia_desabilita_sem_chave():
 
 
 def test_montar_parametros_vazios_viram_none(tmp_path):
-    p = gui.montar_parametros(str(tmp_path), "canhoto", "paddleocr", "auto", "", "  ")
+    p = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "auto", "", "  ")
     assert p.seq_esperada is None
     assert p.intervalo_maximo is None
-    p2 = gui.montar_parametros(str(tmp_path), "canhoto", "paddleocr", "auto", "383400", "1000")
+    p2 = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "auto", "383400", "1000")
     assert (p2.seq_esperada, p2.intervalo_maximo) == (383400, 1000)
 ```
 
@@ -2357,7 +2376,7 @@ git commit -m "feat: output (copias renomeadas + csv/log) e janela Tkinter"
 
 **Interfaces:**
 - Consumes: todo o pacote `leitor_lote`.
-- Produces: `dist/leitor-lote/leitor-lote.exe` (modo `--onedir`), com `leitor_lote/tipos.fallback.json`, dados do `paddleocr`/`pypdfium2` e o binário do Tesseract embarcados. Workflow que, em tag `v*`, builda no `windows-latest` e anexa `leitor-lote-<tag>.zip` no Release.
+- Produces: `dist/leitor-lote/leitor-lote.exe` (modo `--onedir`), com `leitor_lote/tipos.fallback.json`, os modelos ONNX do `rapidocr_onnxruntime`, dados do `pypdfium2` e o binário do Tesseract embarcados. Workflow que, em tag `v*`, builda no `windows-latest` e anexa `leitor-lote-<tag>.zip` no Release.
 
 - [ ] **Step 1: Escrever `leitor-lote.spec`**
 
@@ -2368,7 +2387,7 @@ import shutil
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = [("leitor_lote/tipos.fallback.json", "leitor_lote")]
-datas += collect_data_files("paddleocr")
+datas += collect_data_files("rapidocr_onnxruntime")  # modelos .onnx + config.yaml
 datas += collect_data_files("pypdfium2_raw")
 
 binaries = []
@@ -2376,7 +2395,11 @@ _tess = shutil.which("tesseract")
 if _tess:
     binaries.append((_tess, "."))
 
-hiddenimports = collect_submodules("paddleocr") + ["PIL._tkinter_finder"]
+hiddenimports = (
+    collect_submodules("rapidocr_onnxruntime")
+    + collect_submodules("onnxruntime")
+    + ["PIL._tkinter_finder"]
+)
 
 a = Analysis(
     ["leitor_lote/__main__.py"],
@@ -2662,7 +2685,7 @@ Lê uma pasta de canhotos (imagens `.jpg/.png` e PDFs), extrai o número de cada
 | Motor | Chave? | Observação |
 |---|---|---|
 | `tesseract` | não | embutido; bom no número impresso |
-| `paddleocr` | não | embutido; melhor OCR tradicional grátis |
+| `rapidocr` | não | embutido; melhor OCR tradicional grátis |
 | `trocr` | não | baixa ~1,3 GB no 1º uso (precisa de internet uma vez) |
 | `openai:gpt-5-mini` / `openai:gpt-5` | sim | cole a chave em **Configurar chaves…** |
 | `mistral-ocr` | sim | idem |
@@ -2686,7 +2709,7 @@ A lista de tipos de leitura é buscada de
     "id": "canhoto",
     "nome": "Canhoto",
     "modo": "auto",
-    "motor": "paddleocr",
+    "motor": "rapidocr",
     "prompt": "Leia APENAS o número de 6 dígitos...",
     "campos": [{ "nome": "numero", "tamanho": 6 }],
     "formato_exemplo": "349498"
@@ -2717,7 +2740,7 @@ No CI, um push de tag `v*` builda no `windows-latest` e anexa o zip no Release.
 
 ```bash
 uv run python -m bench.benchmark --pasta ./amostras --gabarito ./amostras/gabarito.csv \
-    --tipo canhoto --motores tesseract,paddleocr,trocr,openai:gpt-5-mini,mistral-ocr
+    --tipo canhoto --motores tesseract,rapidocr,trocr,openai:gpt-5-mini,mistral-ocr
 ```
 
 `gabarito.csv`: colunas `arquivo,esperado` (dígitos esperados). Saída: tabela no
@@ -2752,7 +2775,7 @@ git commit -m "docs: README (uso do exe, motores, modos, tipos.json, dev, build,
 | Ler pasta local de imagens/PDFs | 12 (`_arquivos`, `EXT_OK`) |
 | Sem backend / sem chave embutida | Global Constraints; 4, 10, 11, 13 (testes de não-vazamento) |
 | Motor escolhível por tipo + sobreposto na janela | 4 (`Tipo.motor`), 6 (`resolve`), 13 (`opcoes_motor`, combos) |
-| Modo grátis sem chave (Tesseract/Paddle) | 7, 8 |
+| Modo grátis sem chave (Tesseract/RapidOCR) | 7, 8 |
 | `Reading{valor, confianca, motor, bruto}` | 2, 6 |
 | `preprocess`: EXIF, ≤2000px/q82, PDF→páginas, threshold/deskew (só inclinação pequena) | 5 |
 | Temporários do `preprocess` limpos (`descartar` no `finally` da pipeline) | 5 (fn) + 12 (chamada) |
@@ -2761,7 +2784,7 @@ git commit -m "docs: README (uso do exe, motores, modos, tipos.json, dev, build,
 | Concorrência limitada (default 5) | 12 (`ThreadPoolExecutor`, teste de limite) |
 | `output`: cópias renomeadas, colisão `_2/_3`, `ERRO_`, CSV UTF-8-BOM, log | 13 |
 | `config` local + `tipos.json` por URL com fallback | 4 |
-| Readers: Tesseract, PaddleOCR, TrOCR (download sob demanda), OpenAI (porta `lerArquivoComIA`), Mistral OCR | 7, 8, 9, 10, 11 |
+| Readers: Tesseract, RapidOCR, TrOCR (download sob demanda), OpenAI (porta `lerArquivoComIA`), Mistral OCR | 7, 8, 9, 10, 11 |
 | Janela Tkinter única | 13 |
 | PyInstaller `--onedir` + GitHub Actions no tag | 14 |
 | `bench/benchmark.py` (acerto, CER de dígito, tempo) | 15 |

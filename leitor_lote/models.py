@@ -29,6 +29,7 @@ class PreparedImage:
 class Campo:
     nome: str
     tamanho: int = 6
+    sequencial: bool = False
 
 
 @dataclass(frozen=True)

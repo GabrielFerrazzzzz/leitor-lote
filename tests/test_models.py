@@ -21,8 +21,11 @@ def test_reading_frozen():
         r.valor = "x"  # frozen
 
 
-def test_campo_default_tamanho():
-    assert Campo(nome="numero").tamanho == 6
+def test_campo_defaults():
+    c = Campo(nome="numero")
+    assert c.tamanho == 6
+    assert c.sequencial is False
+    assert Campo(nome="nota", sequencial=True).sequencial is True
 
 
 def test_tipo_com_campos():

@@ -22,6 +22,9 @@ def avaliar(
     if len(partes) < n:
         partes = partes + [""] * (n - len(partes))
 
+    checa_faixa = seq_esperada is not None and intervalo_maximo is not None
+    algum_sequencial = any(c.sequencial for c in tipo.campos)
+
     saidas: list[str] = []
     motivos: list[str] = []
     for campo, parte in zip(tipo.campos, partes[:n]):
@@ -30,7 +33,8 @@ def avaliar(
             saidas.append(NAO_RECONHECIDO)
             motivos.append(f"{campo.nome}: {len(d)} dígitos (esperado {campo.tamanho})")
             continue
-        if seq_esperada is not None and intervalo_maximo is not None:
+        aplica_faixa = checa_faixa and (campo.sequencial or not algum_sequencial)
+        if aplica_faixa:
             valor = int(d)
             lo, hi = seq_esperada - intervalo_maximo, seq_esperada + intervalo_maximo
             if not (lo <= valor <= hi):

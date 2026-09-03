@@ -5,6 +5,9 @@ CANHOTO = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="auto", motor="padd
                campos=(Campo("numero", 6),))
 PEDIDO = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
               campos=(Campo("documento", 6), Campo("nota", 6)))
+PEDIDO_SEQ = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="paddleocr",
+                  campos=(Campo("documento", 6, sequencial=False),
+                          Campo("nota", 6, sequencial=True)))
 
 
 def _r(valor: str) -> Reading:
@@ -46,3 +49,24 @@ def test_faixa_fora():
     assert v.aprovado is False
     assert v.texto_lido == "Não reconhecido"
     assert "fora" in v.motivo
+
+
+def test_faixa_exige_ambos_parametros():
+    # só seq, sem intervalo -> a regra de faixa é pulada
+    v = avaliar(_r("803464"), CANHOTO, 383400, None)
+    assert v.aprovado is True
+
+
+def test_faixa_limite_inclusivo():
+    v = avaliar(_r("384400"), CANHOTO, 383400, 1000)  # exatamente seq + intervalo
+    assert v.aprovado is True
+
+
+def test_faixa_so_no_campo_sequencial():
+    # documento longe da sequência NÃO reprova; nota fora da faixa reprova
+    ok = avaliar(_r("999999 - 383462"), PEDIDO_SEQ, 383400, 1000)
+    assert ok.texto_lido == "999999 - 383462"
+    assert ok.aprovado is True
+    ruim = avaliar(_r("999999 - 803464"), PEDIDO_SEQ, 383400, 1000)
+    assert ruim.texto_lido == "999999 - Não reconhecido"
+    assert ruim.aprovado is False

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 
 import cv2
@@ -14,15 +15,19 @@ from leitor_lote.models import PreparedImage
 MAX_LADO = 2000
 JPEG_Q = 82
 DPI = 300
+SKEW_MAX_GRAUS = 15.0  # acima disso é ruído do minAreaRect, não inclinação real — não rotaciona
 
 
 def _deskew(arr: np.ndarray) -> np.ndarray:
-    coords = np.column_stack(np.where(arr < 255))
-    if coords.size == 0:
+    # pontos escuros como (x, y) — np.where devolve (linha, col) = (y, x), então inverte
+    coords = np.column_stack(np.where(arr < 255))[:, ::-1]
+    if coords.shape[0] < 50:
         return arr
     angle = cv2.minAreaRect(coords.astype(np.float32))[-1]
-    angle = -(90 + angle) if angle < -45 else -angle
-    if abs(angle) < 0.5:
+    # OpenCV >=4.5: minAreaRect devolve angle em (0, 90]; normaliza pra (-45, 45]
+    if angle > 45:
+        angle -= 90
+    if abs(angle) < 0.5 or abs(angle) > SKEW_MAX_GRAUS:
         return arr
     h, w = arr.shape
     m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
@@ -70,3 +75,11 @@ def preparar(arquivo: Path, *, para_ocr: bool) -> list[PreparedImage]:
             doc.close()
     with Image.open(arquivo) as img:
         return [_para_prepared(img, para_ocr)]
+
+
+def descartar(imagens: Iterable[PreparedImage]) -> None:
+    for img in imagens:
+        try:
+            Path(img.caminho_tmp).unlink(missing_ok=True)
+        except OSError:
+            pass

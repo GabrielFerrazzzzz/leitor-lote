@@ -37,3 +37,22 @@ def test_para_ocr_aplica_threshold(png_pequeno, monkeypatch):
     chamado["n"] = 0
     preprocess.preparar(png_pequeno, para_ocr=False)
     assert chamado["n"] == 0
+
+
+def test_deskew_nao_gira_imagem_alinhada(tmp_path):
+    from PIL import Image, ImageDraw
+
+    p = tmp_path / "barra.png"
+    img = Image.new("RGB", (600, 200), "white")
+    ImageDraw.Draw(img).rectangle([40, 90, 560, 110], fill="black")  # barra horizontal já alinhada
+    img.save(p)
+    out = preprocess.preparar(p, para_ocr=True)[0]
+    assert out.largura > out.altura  # continua paisagem — não sofreu quarto de volta
+
+
+def test_descarta_temporarios(png_pequeno):
+    out = preprocess.preparar(png_pequeno, para_ocr=False)
+    caminhos = [x.caminho_tmp for x in out]
+    assert all(c.exists() for c in caminhos)
+    preprocess.descartar(out)
+    assert not any(c.exists() for c in caminhos)

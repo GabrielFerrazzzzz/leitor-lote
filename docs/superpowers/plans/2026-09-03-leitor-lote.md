@@ -2909,6 +2909,37 @@ continuam válidos — `escolher` numa linha só com 6 dígitos devolve `"349498
 
 ---
 
+## Task 18: bloqueantes B2/B3/B4 + crash do config.json (review final)
+
+- **B2 — motor `tesseract` não é self-contained.** Ele funciona pra quem tem Tesseract no PATH
+  (pytesseract faz shell-out), mas o binário + `tessdata` não vão no pacote nesta versão.
+  Correção: honestidade de disponibilidade + doc.
+  - `TesseractReader.disponivel(self, config)` → `return shutil.which("tesseract") is not None`.
+  - `readers.disponivel(motor_id, config)` (nível de módulo): pra `tesseract`, consultar
+    `shutil.which("tesseract")`; `rapidocr`/`trocr` seguem `True`.
+  - `README.md`: linha do `tesseract` deixa de dizer "embutido" → "requer Tesseract instalado
+    no PATH (não vai no pacote nesta versão)".
+  - `.github/workflows/build.yml`: remover o passo `choco install -y tesseract` (não estamos
+    empacotando o binário; bundling completo = follow-up).
+- **B3 — Cancelar dispara `gravar()` completo.** `gui.trabalho()`: depois de `rodar(...)`,
+  `if cancel.is_set(): root.after(0, _cancelado); return` ANTES de `concluir(...)`.
+  Novo `_cancelado()`: `status.config(text="Cancelado")`, botão volta pra "Rodar".
+- **B4 — modo `ia` sem chave não avisa.** `pipeline.rodar()`: no topo,
+  `if not disponivel(p.motor_id, cfg): raise ValueError("O motor <x> precisa de uma chave de API. Use 'Configurar chaves…'.")`.
+  O `except` do `gui.trabalho` já leva isso pro `_erro_fatal` (messagebox). Teste novo em
+  `test_pipeline.py`: `rodar` com `motor_id="openai:gpt-5-mini"` + `Config()` → `pytest.raises(ValueError)`.
+- **config.json corrompido trava o `.exe` (`console=False`, sem feedback).** `config.carregar()`:
+  `try: data = json.loads(...) except (json.JSONDecodeError, OSError): ...` → cai pros defaults e
+  reescreve o arquivo. Também coage tipos: `concorrencia` → `int`, `limiar_confianca` → `float`
+  (default no erro). Teste novo em `test_config.py`: `CONFIG_PATH` com lixo → `carregar()`
+  devolve defaults sem levantar.
+- **cv2 não declarado (review NB2).** `pyproject.toml`: adicionar `"opencv-python>=4.10"` às
+  `dependencies` (já vem transitivo do rapidocr; declarar torna explícito). `uv add "opencv-python>=4.10"`.
+
+**Commit:** `fix: tesseract disponível de verdade, cancelar não grava, ia sem chave erra claro, config.json robusto (B2-B4)`.
+
+---
+
 ## Self-Review
 
 **1. Spec coverage**

@@ -13,6 +13,27 @@ def _janelas(digitos: str, n: int) -> list[str]:
     return [digitos[i : i + n] for i in range(len(digitos) - n + 1)]
 
 
+# CNPJ/CPF nunca é o número do documento -- exclui a linha inteira da disputa
+# (achado real: "No. 3$5277" perdeu um dígito no OCR (virou 5 dígitos, sem
+# candidato), e sobrou só o CNPJ do rodapé pra gerar janelas de 6 dígitos,
+# escolhendo um trecho dele por eliminação).
+_RE_ID_FISCAL = re.compile(r"\bcnpj\b|\bcpf\b", re.IGNORECASE)
+
+# rótulo "No."/"Nº"/"N°" do número do documento (presente em ~todo canhoto real
+# testado) -- desempata quando mais de uma linha tem dígitos plausíveis.
+_RE_ANCORA_NUMERO = re.compile(r"\bno\.?(?=\d|\s|$|[:\-–])|nº|n°", re.IGNORECASE)
+
+
+def _tem_ancora(linhas: list[str], i: int) -> bool:
+    """True se a linha `i` (ou a anterior, quando ela só tem o rótulo sem
+    dígitos -- caso comum em DANFE, 'No.' numa linha e o número na próxima)
+    traz o rótulo do número do documento."""
+    if _RE_ANCORA_NUMERO.search(linhas[i]):
+        return True
+    anterior = linhas[i - 1] if i > 0 else ""
+    return bool(anterior) and not _digitos(anterior) and bool(_RE_ANCORA_NUMERO.search(anterior))
+
+
 def _valores_chave_offset(linhas: list[str], campo: Campo) -> list[str]:
     """Acha, em cada linha com dígitos suficientes pra ser uma chave de acesso
     (NF-e/CT-e, sempre `chave_tamanho` dígitos), o pedaço de `tamanho` dígitos
@@ -75,7 +96,7 @@ def escolher(
         alvo = campo.tamanho
         cands: list[tuple[str, int, bool]] = []  # (numero, idx_linha, linha_limpa)
         for i, ln in enumerate(linhas):
-            if i in usadas:
+            if i in usadas or _RE_ID_FISCAL.search(ln):
                 continue
             d = _digitos(ln)
             if len(d) == alvo:
@@ -83,10 +104,10 @@ def escolher(
             else:
                 cands.extend((w, i, False) for w in _janelas(d, alvo))
 
-        def rank(c: tuple[str, int, bool], campo=campo) -> tuple[bool, bool]:
-            num, _, limpa = c
+        def rank(c: tuple[str, int, bool], campo=campo) -> tuple[bool, bool, bool]:
+            num, idx, limpa = c
             na_faixa = bool(faixa and campo.sequencial and faixa[0] <= int(num) <= faixa[1])
-            return (na_faixa, limpa)  # maior = melhor
+            return (na_faixa, _tem_ancora(linhas, idx), limpa)  # maior = melhor
 
         if cands:
             num, idx, _ = max(cands, key=rank)

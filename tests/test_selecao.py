@@ -122,3 +122,35 @@ def test_lote_misto_varias_chaves_junta_pipe():
     entrada = f"{CHAVE_1}\ntexto no meio\n{CHAVE_2}"
     saida = escolher(_r(entrada), CANHOTO_MISTO, None, None)
     assert saida.valor == "321342 | 387125"
+
+
+def test_cnpj_nunca_vira_numero_quando_no_perde_digito():
+    # achado real (calibração 2026-09-04): OCR trocou um dígito do "No." por
+    # "$", sobrando só 5 dígitos (sem candidato de 6) -- antes disso, o único
+    # jeito de fechar 6 dígitos era pegar um pedaço do CNPJ do rodapé, errado.
+    # Agora CNPJ nunca entra na disputa -> vira "" (Não reconhecido), não um
+    # número errado com aparência de certo.
+    entrada = "No. 3$5277\nCNPJ:32.240.883/0001-01\nSerie 1"
+    saida = escolher(_r(entrada), CANHOTO, None, None)
+    assert saida.valor == ""
+
+
+def test_cpf_tambem_e_excluido_da_disputa():
+    entrada = "recebido por\nCPF:123.456.789-00\n349498 no verso"
+    saida = escolher(_r(entrada), CANHOTO, None, None)
+    assert saida.valor == "349498"
+
+
+def test_ancora_no_prefere_linha_rotulada_entre_candidatos_empatados():
+    # nenhuma das duas linhas fecha "limpa" (6 dígitos exatos) nem cai numa
+    # faixa esperada -- só o rótulo "No" distingue qual delas é o número real.
+    entrada = "No 3494980 ver\n129834765412"
+    saida = escolher(_r(entrada), CANHOTO, None, None)
+    assert saida.valor == "349498"
+
+
+def test_ancora_no_na_linha_anterior_quando_numero_sozinho():
+    # padrão comum de DANFE: "No." numa linha, o número na linha seguinte.
+    entrada = "No.\n385338\n129384\nCNPJ:12.345.678/0001-99"
+    saida = escolher(_r(entrada), CANHOTO, None, None)
+    assert saida.valor == "385338"

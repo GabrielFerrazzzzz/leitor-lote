@@ -4,8 +4,18 @@
     "nome": "Canhoto",
     "modo": "auto",
     "motor": "rapidocr",
-    "prompt": "Leia APENAS o número de 6 dígitos do canhoto. Responda só os dígitos, sem texto.",
-    "campos": [{ "nome": "numero", "tamanho": 6, "sequencial": true }],
+    "prompt": "Se este documento tiver uma chave de acesso NF-e/CT-e (44 dígitos, geralmente perto de 'Chave de acesso' ou 'CHAVES NF-E/CT-E'), responda os dígitos 29 a 34 dela — uma resposta por chave, se houver mais de uma, separadas por ' | '. Caso contrário, leia APENAS o número de 6 dígitos do canhoto (geralmente após 'No.'). Responda só os dígitos (ou os valores separados por ' | '), sem mais texto.",
+    "campos": [
+      {
+        "nome": "numero",
+        "tamanho": 6,
+        "sequencial": true,
+        "estrategia": "chave_offset_ou_digitos",
+        "chave_tamanho": 44,
+        "offset": 29,
+        "repete": true
+      }
+    ],
     "formato_exemplo": "349498"
   },
   {

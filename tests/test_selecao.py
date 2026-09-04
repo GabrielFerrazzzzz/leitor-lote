@@ -11,6 +11,14 @@ CAMPO_CHAVE = Campo("nota", tamanho=6, estrategia="chave_offset", chave_tamanho=
 CANHOTO_ATIVA = Tipo(id="canhoto_ativa", nome="Canhoto Ativa", prompt="", modo="auto",
                      motor="rapidocr", campos=(CAMPO_CHAVE,))
 
+# "canhoto" de verdade (tipos.fallback.json): detecta sozinho se é um documento Ativa
+# (tem chave de 44 dígitos) ou um canhoto comum (não tem) -- lote misto, sem escolher
+# o tipo por arquivo.
+CAMPO_MISTO = Campo("numero", tamanho=6, sequencial=True, estrategia="chave_offset_ou_digitos",
+                    chave_tamanho=44, offset=29, repete=True)
+CANHOTO_MISTO = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="auto", motor="rapidocr",
+                     campos=(CAMPO_MISTO,))
+
 # chave sintética de 44 dígitos onde os dígitos 29-34 (1-indexado) sao "321342" e
 # 387125 -- não depende de conseguir ler os dígitos exatos de uma foto real, só
 # fixa a regra "posição 29, 6 dígitos" que o Gabriel descreveu.
@@ -94,3 +102,23 @@ def test_chave_offset_ia_ja_estruturado_passa_intacto():
     saida = escolher(r, CANHOTO_ATIVA, None, None)
     assert saida.valor == "321342 | 387125"
     assert saida is r
+
+
+def test_lote_misto_com_chave_detecta_ativa():
+    # tem chave de 44 dígitos na página -> trata como Ativa, ignora o "No." se tivesse
+    entrada = f"canhoto qualquer\nChave de acesso\n{CHAVE_1}"
+    saida = escolher(_r(entrada), CANHOTO_MISTO, None, None)
+    assert saida.valor == "321342"
+
+
+def test_lote_misto_sem_chave_cai_pro_canhoto_comum():
+    # sem nenhuma linha com 44 dígitos -> não é Ativa, usa a busca normal por 6 dígitos
+    entrada = "NF 349498\ncnpj 12.345.678/0001-99\n03/09/2026"
+    saida = escolher(_r(entrada), CANHOTO_MISTO, None, None)
+    assert saida.valor == "349498"
+
+
+def test_lote_misto_varias_chaves_junta_pipe():
+    entrada = f"{CHAVE_1}\ntexto no meio\n{CHAVE_2}"
+    saida = escolher(_r(entrada), CANHOTO_MISTO, None, None)
+    assert saida.valor == "321342 | 387125"

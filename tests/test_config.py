@@ -47,6 +47,12 @@ def test_buscar_tipos_usa_fallback_quando_url_falha(_paths, monkeypatch):
     campo_ativa = tipos["canhoto_ativa"].campos[0]
     assert campo_ativa.estrategia == "chave_offset"
     assert campo_ativa.chave_tamanho == 44
+
+    # canhoto comum detecta sozinho se é Ativa (lote misto) -- offset 29, com fallback
+    campo_canhoto = tipos["canhoto"].campos[0]
+    assert campo_canhoto.estrategia == "chave_offset_ou_digitos"
+    assert campo_canhoto.offset == 29
+    assert campo_canhoto.repete is True
     assert campo_ativa.offset == 29
     assert campo_ativa.repete is True
 

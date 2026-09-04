@@ -60,13 +60,17 @@ def escolher(
     usadas: set[int] = set()
     escolhidos: list[str] = []
     for campo in tipo.campos:
-        if campo.estrategia == "chave_offset":
+        if campo.estrategia in ("chave_offset", "chave_offset_ou_digitos"):
             achados = _valores_chave_offset(linhas, campo)
-            if campo.repete:
-                escolhidos.append(" | ".join(achados))
-            else:
-                escolhidos.append(achados[0] if achados else "")
-            continue
+            # achou uma chave de 44 dígitos -> é um documento tipo Ativa, usa isso.
+            # "chave_offset" puro sempre decide aqui (mesmo sem achar nada, vira
+            # "Não reconhecido" no avaliar); "chave_offset_ou_digitos" só decide
+            # aqui quando ACHOU algo -- sem achar, cai pro caminho de dígitos
+            # abaixo (não é um documento Ativa, é um canhoto comum).
+            if achados or campo.estrategia == "chave_offset":
+                escolhidos.append(" | ".join(achados) if campo.repete else
+                                  (achados[0] if achados else ""))
+                continue
 
         alvo = campo.tamanho
         cands: list[tuple[str, int, bool]] = []  # (numero, idx_linha, linha_limpa)

@@ -64,6 +64,10 @@ def _parse_tipos(raw: list[dict]) -> dict[str, Tipo]:
                 nome=c["nome"],
                 tamanho=int(c.get("tamanho", 6)),
                 sequencial=bool(c.get("sequencial", False)),
+                estrategia=c.get("estrategia", "digitos"),
+                chave_tamanho=int(c.get("chave_tamanho", 44)),
+                offset=int(c.get("offset", 1)),
+                repete=bool(c.get("repete", False)),
             )
             for c in campos_raw
         )

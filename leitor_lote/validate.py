@@ -28,6 +28,23 @@ def avaliar(
     saidas: list[str] = []
     motivos: list[str] = []
     for campo, parte in zip(tipo.campos, partes[:n]):
+        if campo.repete:
+            # cada ocorrência é independente: uma ruim não derruba as outras
+            # (mesmo espírito do "sibling survival" entre campos diferentes)
+            pecas = [p.strip() for p in parte.split(" | ") if p.strip()]
+            validas = [p for p in pecas if len(_digitos(p)) == campo.tamanho]
+            if not validas:
+                saidas.append(NAO_RECONHECIDO)
+                motivos.append(f"{campo.nome}: nenhuma ocorrência válida encontrada")
+                continue
+            if len(validas) < len(pecas):
+                motivos.append(
+                    f"{campo.nome}: {len(pecas) - len(validas)} ocorrência(s) descartada(s) "
+                    "(nº de dígitos errado)"
+                )
+            saidas.append(" | ".join(validas))
+            continue
+
         d = _digitos(parte)
         if len(d) != campo.tamanho:
             saidas.append(NAO_RECONHECIDO)

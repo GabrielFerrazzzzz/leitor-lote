@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from leitor_lote.models import Reading, Tipo
+from leitor_lote.models import Campo, Reading, Tipo
 
 
 def _digitos(s: str) -> str:
@@ -11,6 +11,24 @@ def _digitos(s: str) -> str:
 
 def _janelas(digitos: str, n: int) -> list[str]:
     return [digitos[i : i + n] for i in range(len(digitos) - n + 1)]
+
+
+def _valores_chave_offset(linhas: list[str], campo: Campo) -> list[str]:
+    """Acha, em cada linha com dígitos suficientes pra ser uma chave de acesso
+    (NF-e/CT-e, sempre `chave_tamanho` dígitos), o pedaço de `tamanho` dígitos
+    que começa na posição 1-indexada `offset` dentro dela. Uma linha só rende
+    um valor; `repete=True` em quem chama decide se usa todos ou só o 1º."""
+    achados: list[str] = []
+    for ln in linhas:
+        d = _digitos(ln)
+        if len(d) < campo.chave_tamanho:
+            continue
+        chave = d[: campo.chave_tamanho]
+        inicio = campo.offset - 1
+        pedaco = chave[inicio : inicio + campo.tamanho]
+        if len(pedaco) == campo.tamanho:
+            achados.append(pedaco)
+    return achados
 
 
 def escolher(
@@ -25,6 +43,13 @@ def escolher(
     ):
         return r
 
+    # caminho IA: campo único repetido (ex. várias chaves na mesma página) e o
+    # motor já entregou "<a> | <b>" estruturado -> repassa intacto
+    if n == 1 and tipo.campos[0].repete:
+        pecas = [p.strip() for p in r.valor.split(" | ") if p.strip()]
+        if pecas and all(len(_digitos(p)) == tipo.campos[0].tamanho for p in pecas):
+            return r
+
     faixa = None
     if seq_esperada is not None and intervalo_maximo is not None:
         faixa = (seq_esperada - intervalo_maximo, seq_esperada + intervalo_maximo)
@@ -35,6 +60,14 @@ def escolher(
     usadas: set[int] = set()
     escolhidos: list[str] = []
     for campo in tipo.campos:
+        if campo.estrategia == "chave_offset":
+            achados = _valores_chave_offset(linhas, campo)
+            if campo.repete:
+                escolhidos.append(" | ".join(achados))
+            else:
+                escolhidos.append(achados[0] if achados else "")
+            continue
+
         alvo = campo.tamanho
         cands: list[tuple[str, int, bool]] = []  # (numero, idx_linha, linha_limpa)
         for i, ln in enumerate(linhas):

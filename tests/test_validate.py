@@ -8,6 +8,8 @@ PEDIDO = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="rapidoc
 PEDIDO_SEQ = Tipo(id="pedido", nome="Pedido", prompt="", modo="auto", motor="rapidocr",
                   campos=(Campo("documento", 6, sequencial=False),
                           Campo("nota", 6, sequencial=True)))
+CANHOTO_ATIVA = Tipo(id="canhoto_ativa", nome="Canhoto Ativa", prompt="", modo="auto",
+                     motor="rapidocr", campos=(Campo("nota", 6, repete=True),))
 
 
 def _r(valor: str) -> Reading:
@@ -70,3 +72,36 @@ def test_faixa_so_no_campo_sequencial():
     ruim = avaliar(_r("999999 - 803464"), PEDIDO_SEQ, 383400, 1000)
     assert ruim.texto_lido == "999999 - Não reconhecido"
     assert ruim.aprovado is False
+
+
+def test_repete_uma_ocorrencia_ok():
+    v = avaliar(_r("321342"), CANHOTO_ATIVA, None, None)
+    assert v.aprovado is True
+    assert v.texto_lido == "321342"
+
+
+def test_repete_varias_ocorrencias_ok():
+    v = avaliar(_r("321342 | 387125"), CANHOTO_ATIVA, None, None)
+    assert v.aprovado is True
+    assert v.texto_lido == "321342 | 387125"
+
+
+def test_repete_vazio_reprova():
+    v = avaliar(_r(""), CANHOTO_ATIVA, None, None)
+    assert v.aprovado is False
+    assert v.texto_lido == "Não reconhecido"
+    assert "nenhuma ocorrência" in v.motivo
+
+
+def test_repete_uma_ocorrencia_invalida_nao_derruba_as_boas():
+    # ocorrência ruim é descartada, a boa sobrevive -> ainda aprova
+    v = avaliar(_r("321342 | 38712X"), CANHOTO_ATIVA, None, None)
+    assert v.aprovado is True
+    assert v.texto_lido == "321342"
+    assert "1 ocorrência" in v.motivo
+
+
+def test_repete_todas_invalidas_reprova():
+    v = avaliar(_r("34X | 38Y"), CANHOTO_ATIVA, None, None)
+    assert v.aprovado is False
+    assert v.texto_lido == "Não reconhecido"

@@ -8,6 +8,7 @@ from pathlib import Path
 from leitor_lote import config as cfgmod
 from leitor_lote.preprocess import preparar
 from leitor_lote.readers import LOCAIS, resolve
+from leitor_lote.selecao import escolher
 
 _LOCAIS_BASE = LOCAIS
 
@@ -54,8 +55,11 @@ def rodar(pasta: Path, gabarito: Path, tipo_id: str, motores: list[str]) -> list
             img = preparar(pasta / arquivo, para_ocr=local)[0]
             ini = time.time()
             leitura = reader.read(img, tipo)
+            # mesma seleção que o pipeline aplica (sem dica de sequência aqui) --
+            # senão compararíamos a saída crua e ruidosa do OCR contra o gabarito
+            selecionada = escolher(leitura, tipo, None, None)
             soma_t += time.time() - ini
-            obtido = _so_digitos(leitura.valor)
+            obtido = _so_digitos(selecionada.valor)
             if obtido == _so_digitos(esperado):
                 acertos += 1
             if not obtido:

@@ -30,6 +30,10 @@ class Campo:
     nome: str
     tamanho: int = 6
     sequencial: bool = False
+    estrategia: str = "digitos"  # "digitos" (linha/janela) | "chave_offset" (posição fixa numa chave)
+    chave_tamanho: int = 44  # só usado com estrategia="chave_offset" (chave de acesso NF-e/CT-e)
+    offset: int = 1  # posição 1-indexada do valor dentro da chave (só "chave_offset")
+    repete: bool = False  # True = extrai TODAS as ocorrências na página, junta com " | "
 
 
 @dataclass(frozen=True)

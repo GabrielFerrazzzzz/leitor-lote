@@ -38,11 +38,17 @@ def test_buscar_tipos_usa_fallback_quando_url_falha(_paths, monkeypatch):
 
     monkeypatch.setattr(httpx, "get", boom)
     tipos = cfgmod.buscar_tipos(cfgmod.carregar())
-    assert set(tipos) == {"canhoto", "pedido"}
+    assert set(tipos) == {"canhoto", "pedido", "canhoto_ativa"}
     assert isinstance(tipos["canhoto"], Tipo)
     assert tipos["pedido"].campos[1].nome == "nota"
     assert tipos["pedido"].campos[1].sequencial is True
     assert tipos["pedido"].campos[0].sequencial is False
+
+    campo_ativa = tipos["canhoto_ativa"].campos[0]
+    assert campo_ativa.estrategia == "chave_offset"
+    assert campo_ativa.chave_tamanho == 44
+    assert campo_ativa.offset == 29
+    assert campo_ativa.repete is True
 
 
 def test_buscar_tipos_parseia_resposta_http(_paths, monkeypatch):
@@ -62,6 +68,9 @@ def test_buscar_tipos_parseia_resposta_http(_paths, monkeypatch):
     tipos = cfgmod.buscar_tipos(cfgmod.carregar())
     assert tipos["x"].campos[0].tamanho == 4
     assert tipos["x"].modo == "ocr"
+    # campo sem estrategia/chave_tamanho/offset/repete no JSON -> defaults do Campo
+    assert tipos["x"].campos[0].estrategia == "digitos"
+    assert tipos["x"].campos[0].repete is False
 
 
 def test_carregar_config_corrompido_reescreve_default(_paths):

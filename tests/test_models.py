@@ -25,7 +25,20 @@ def test_campo_defaults():
     c = Campo(nome="numero")
     assert c.tamanho == 6
     assert c.sequencial is False
+    assert c.estrategia == "digitos"
+    assert c.chave_tamanho == 44
+    assert c.offset == 1
+    assert c.repete is False
     assert Campo(nome="nota", sequencial=True).sequencial is True
+
+
+def test_campo_chave_offset():
+    c = Campo(
+        nome="nota", tamanho=6, estrategia="chave_offset", chave_tamanho=44, offset=29, repete=True
+    )
+    assert c.estrategia == "chave_offset"
+    assert c.offset == 29
+    assert c.repete is True
 
 
 def test_tipo_com_campos():

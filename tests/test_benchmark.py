@@ -1,7 +1,10 @@
 from PIL import Image
 
 from bench import benchmark
-from leitor_lote.models import Reading
+from leitor_lote.models import Campo, Reading, Tipo
+
+_TIPO_TESTE = Tipo(id="canhoto", nome="Canhoto", prompt="", modo="ocr", motor="fake",
+                   campos=(Campo("numero", 6),))
 
 
 def test_lev():
@@ -31,7 +34,7 @@ def test_rodar_com_fake(tmp_path, monkeypatch):
             return Reading(valor="349498", confianca=None, motor="fake", bruto="")
 
     monkeypatch.setattr(benchmark, "resolve", lambda mid, cfg: _R())
-    monkeypatch.setattr(benchmark, "_tipo", lambda tid: object())
+    monkeypatch.setattr(benchmark, "_tipo", lambda tid: _TIPO_TESTE)
     linhas = benchmark.rodar(pasta, gab, "canhoto", ["fake"])
     assert linhas[0]["motor"] == "fake"
     assert linhas[0]["acerto_%"] == 50.0

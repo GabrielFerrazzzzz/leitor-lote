@@ -2446,17 +2446,25 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - name: Instalar Tesseract
-        run: choco install -y tesseract
       - run: uv sync --extra dev
       - run: uv run pyinstaller leitor-lote.spec
       - name: Zipar
-        run: Compress-Archive -Path dist/leitor-lote/* -DestinationPath leitor-lote-${{ github.ref_name }}.zip
+        run: |
+          Compress-Archive -Path dist/leitor-lote/* -DestinationPath leitor-lote-${{ github.ref_name }}.zip
+          Copy-Item leitor-lote-${{ github.ref_name }}.zip leitor-lote-windows.zip
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')   # só publica em tag, não no workflow_dispatch
         with:
-          files: leitor-lote-*.zip
+          files: |
+            leitor-lote-${{ github.ref_name }}.zip
+            leitor-lote-windows.zip
 ```
+
+> **Nota (2026-09-04):** o passo "Instalar Tesseract" (`choco install -y tesseract`) foi removido no
+> fix B2 (Task 18) — não empacotamos o binário nesta versão. E `leitor-lote-windows.zip` é um asset
+> de nome fixo, igual em toda release, pra permitir link de **download direto** (sem passar pela
+> página de releases): `.../releases/latest/download/leitor-lote-windows.zip` sempre baixa a versão
+> mais recente. O zip versionado (`leitor-lote-vX.Y.Z.zip`) continua publicado junto, pra histórico.
 
 - [ ] **Step 3: Buildar localmente (Windows) e conferir**
 

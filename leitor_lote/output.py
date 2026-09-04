@@ -4,7 +4,6 @@ import csv
 import re
 import shutil
 import unicodedata
-from datetime import datetime
 from pathlib import Path
 
 from leitor_lote.models import LinhaResultado
@@ -24,12 +23,30 @@ def _nome_unico(base: str, ext: str, usados: dict[str, int]) -> str:
     return f"{base}{ext}" if n == 1 else f"{base}_{n}{ext}"
 
 
-def gravar(linhas: list[LinhaResultado], pasta_saida: Path) -> None:
+def copiar_arquivos(linhas: list[LinhaResultado], pasta_saida: Path) -> None:
+    """Copia cada arquivo lido para `pasta_saida` com o nome renomeado (número lido,
+    ou ERRO_<nome original> quando a leitura falhou). Não grava CSV nem log — só cópias."""
     pasta_entrada = pasta_saida.parent
     pasta_saida.mkdir(parents=True, exist_ok=True)
     usados: dict[str, int] = {}
 
-    with (pasta_saida / "resultado.csv").open("w", encoding="utf-8-sig", newline="") as f:
+    for linha in linhas:
+        origem = pasta_entrada / linha.arquivo
+        if not origem.exists():
+            continue
+        if linha.status == "erro":
+            base = "ERRO_" + limpar_nome(Path(linha.arquivo).stem)
+        else:
+            base = limpar_nome(linha.texto_lido)
+        destino = pasta_saida / _nome_unico(base, origem.suffix.lower(), usados)
+        shutil.copy2(origem, destino)
+
+
+def exportar_csv(linhas: list[LinhaResultado], caminho_csv: Path) -> None:
+    """Grava `linhas` como CSV (utf-8-sig, mesmo cabeçalho de sempre) no caminho
+    escolhido pelo usuário — livre, não precisa estar dentro de `pasta_saida`."""
+    caminho_csv.parent.mkdir(parents=True, exist_ok=True)
+    with caminho_csv.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
         w.writerow(COLUNAS)
         for linha in linhas:
@@ -43,17 +60,3 @@ def gravar(linhas: list[LinhaResultado], pasta_saida: Path) -> None:
                     linha.erro or "",
                 ]
             )
-            origem = pasta_entrada / linha.arquivo
-            if not origem.exists():
-                continue
-            if linha.status == "erro":
-                base = "ERRO_" + limpar_nome(Path(linha.arquivo).stem)
-            else:
-                base = limpar_nome(linha.texto_lido)
-            destino = pasta_saida / _nome_unico(base, origem.suffix.lower(), usados)
-            shutil.copy2(origem, destino)
-
-    with (pasta_saida / "log.txt").open("w", encoding="utf-8") as f:
-        for linha in linhas:
-            ts = datetime.now().isoformat(timespec="seconds")  # noqa: DTZ005 - hora local no log
-            f.write(f"{ts}\t{linha.arquivo}\t{linha.motor}\t{linha.status}\t{linha.erro or ''}\n")

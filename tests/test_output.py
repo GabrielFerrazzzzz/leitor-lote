@@ -42,6 +42,34 @@ def test_erro_ganha_prefixo(tmp_path):
     assert (ent / "saida" / "ERRO_FALHA.jpg").exists()
 
 
+def test_cancelado_nao_e_copiado(tmp_path):
+    # "cancelado" é um arquivo que nunca chegou a ser lido (sobrou na fila
+    # quando o usuário cancelou) -- não é erro de leitura, não deve virar
+    # ERRO_ na saída.
+    ent = _entrada(tmp_path, ["nunca_lido.jpg"])
+    linhas = [LinhaResultado("nunca_lido.jpg", "", None, "", "erro", "cancelado")]
+    output.copiar_arquivos(linhas, ent / "saida")
+    assert not (ent / "saida").exists() or not list((ent / "saida").iterdir())
+
+
+def test_copiar_um_progressivo_com_mesmo_usados_dedupe_igual_ao_lote(tmp_path):
+    # simula o fluxo da janela: cada arquivo é copiado assim que sua leitura
+    # termina (não só no final), reusando o mesmo dict `usados` entre chamadas
+    # -- precisa dar a mesma dedupe que copiar_arquivos() faria de uma vez só.
+    ent = _entrada(tmp_path, ["a.jpg", "b.jpg"])
+    saida = ent / "saida"
+    saida.mkdir()
+    usados: dict[str, int] = {}
+    output.copiar_um(
+        LinhaResultado("a.jpg", "349498", 0.9, "rapidocr", "ok", None), ent, saida, usados
+    )
+    output.copiar_um(
+        LinhaResultado("b.jpg", "349498", 0.9, "rapidocr", "ok", None), ent, saida, usados
+    )
+    assert (saida / "349498.jpg").exists()
+    assert (saida / "349498_2.jpg").exists()
+
+
 def test_copiar_arquivos_nao_grava_csv_nem_log(tmp_path):
     ent = _entrada(tmp_path, ["a.jpg"])
     linhas = [LinhaResultado("a.jpg", "349498", 0.91, "rapidocr", "ok", None)]

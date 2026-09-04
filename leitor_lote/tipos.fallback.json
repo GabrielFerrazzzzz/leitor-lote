@@ -29,24 +29,5 @@
       { "nome": "nota", "tamanho": 6, "sequencial": true }
     ],
     "formato_exemplo": "349498 - 383462"
-  },
-  {
-    "id": "canhoto_ativa",
-    "nome": "Canhoto Ativa (DACTE)",
-    "modo": "auto",
-    "motor": "rapidocr",
-    "prompt": "Leia a(s) chave(s) de acesso de NF-e/CT-e deste documento (sempre 44 dígitos, geralmente perto de 'Chave de acesso' ou 'CHAVES NF-E/CT-E'). Para cada uma, responda os dígitos 29 a 34 dela (6 dígitos). Se houver mais de uma chave, responda todos os valores separados por ' | ', só dígitos, sem mais nenhum texto.",
-    "campos": [
-      {
-        "nome": "nota",
-        "tamanho": 6,
-        "sequencial": false,
-        "estrategia": "chave_offset",
-        "chave_tamanho": 44,
-        "offset": 29,
-        "repete": true
-      }
-    ],
-    "formato_exemplo": "321342 | 387125"
   }
 ]

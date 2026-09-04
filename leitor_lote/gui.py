@@ -11,7 +11,7 @@ import customtkinter as ctk
 from leitor_lote import __version__, atualizacao
 from leitor_lote import config as cfgmod
 from leitor_lote.models import LinhaResultado, ParametrosRodada
-from leitor_lote.output import copiar_arquivos, exportar_csv
+from leitor_lote.output import copiar_um, exportar_csv
 from leitor_lote.pipeline import rodar
 from leitor_lote.readers import LOCAIS, MOTORES_IDS, disponivel
 
@@ -83,8 +83,8 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
 
     root = ctk.CTk()
     root.title("leitor-lote")
-    root.geometry("640x780")
-    root.minsize(600, 660)
+    root.geometry("640x460")
+    root.minsize(600, 420)
 
     # --- banner de atualização disponível (fica oculto até a checagem achar algo) ---
     banner = ctk.CTkFrame(root, fg_color="#1e2f3f", corner_radius=0)
@@ -225,42 +225,38 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
     btn = ctk.CTkButton(frm, text="Rodar")
     btn.grid(row=9, column=0, columnspan=3, pady=(0, 8))
 
-    # --- resultados da última rodada ---
-    frm.grid_rowconfigure(10, weight=1)
-    tabela_frame = ctk.CTkFrame(frm, fg_color="transparent")
-    tabela_frame.grid(row=10, column=0, columnspan=3, sticky="nsew", pady=(0, 6))
-    tabela_frame.grid_columnconfigure(0, weight=1)
-    tabela_frame.grid_rowconfigure(0, weight=1)
+    # --- resultados: nada fica visível na janela principal durante/após a
+    # rodada -- só a contagem em `status`. A tabela de verdade só aparece
+    # (janela separada) quando o usuário pede pra exportar, não antes.
+    def _mostrar_resultados(linhas: list[LinhaResultado]) -> None:
+        janela = ctk.CTkToplevel(root)
+        janela.title("Resultados")
+        janela.geometry("900x460")
+        janela.transient(root)
 
-    _estilizar_treeview_escuro()
+        _estilizar_treeview_escuro()
+        colunas = ("arquivo", "lido", "confianca", "motor", "status")
+        titulos = {
+            "arquivo": "Arquivo",
+            "lido": "Lido",
+            "confianca": "Confiança",
+            "motor": "Motor",
+            "status": "Status",
+        }
+        tree = ttk.Treeview(janela, columns=colunas, show="headings")
+        for c in colunas:
+            tree.heading(c, text=titulos[c])
+            tree.column(c, width=150, anchor="w")
+        vsb = ttk.Scrollbar(janela, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=12)
+        vsb.pack(side="left", fill="y", pady=12, padx=(0, 12))
 
-    colunas = ("arquivo", "lido", "confianca", "motor", "status")
-    titulos = {
-        "arquivo": "Arquivo",
-        "lido": "Lido",
-        "confianca": "Confiança",
-        "motor": "Motor",
-        "status": "Status",
-    }
-    tree = ttk.Treeview(tabela_frame, columns=colunas, show="headings", height=8)
-    for c in colunas:
-        tree.heading(c, text=titulos[c])
-        tree.column(c, width=110, anchor="w")
-    vsb = ttk.Scrollbar(tabela_frame, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=vsb.set)
-    tree.grid(row=0, column=0, sticky="nsew")
-    vsb.grid(row=0, column=1, sticky="ns")
-
-    def _popular_resultados(linhas: list[LinhaResultado]) -> None:
-        ultimas_linhas.clear()
-        ultimas_linhas.extend(linhas)
-        tree.delete(*tree.get_children())
         for linha in linhas:
             conf = "" if linha.confianca is None else f"{linha.confianca:.3f}"
             tree.insert(
                 "", "end", values=(linha.arquivo, linha.texto_lido, conf, linha.motor, linha.status)
             )
-        btn_exportar.configure(state="normal")
 
     def _exportar_csv_click() -> None:
         if not ultimas_linhas:
@@ -274,35 +270,20 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         if not caminho:
             return
         exportar_csv(ultimas_linhas, Path(caminho))
+        _mostrar_resultados(ultimas_linhas)
 
     btn_exportar = ctk.CTkButton(
         frm, text="Exportar CSV…", command=_exportar_csv_click, state="disabled"
     )
-    btn_exportar.grid(row=11, column=0, columnspan=3, pady=(0, 4))
+    btn_exportar.grid(row=10, column=0, columnspan=3, pady=(0, 4))
 
     def progresso(feitos: int, total: int) -> None:
         frac = 0.0 if total == 0 else feitos / total
         root.after(0, lambda: (barra.set(frac), status.configure(text=f"{feitos} de {total}")))
 
-    def concluir(linhas: list[LinhaResultado], saida: Path) -> None:
-        copiar_arquivos(linhas, saida)
-        ok = sum(1 for x in linhas if x.status == "ok")
-        nr = sum(1 for x in linhas if x.status == "nao_reconhecido")
-        er = sum(1 for x in linhas if x.status == "erro")
-        root.after(0, lambda: _fim(saida, linhas, ok, nr, er))
-
-    def _fim(saida: Path, linhas: list[LinhaResultado], ok: int, nr: int, er: int) -> None:
-        status.configure(text=f"Concluído — {ok} ok, {nr} não reconhecidos, {er} erros")
-        btn.configure(text="Abrir pasta de saída", command=lambda: _abrir(saida), state="normal")
-        _popular_resultados(linhas)
-
     def _erro_fatal(msg: str) -> None:
         status.configure(text="Falhou")
         messagebox.showerror("leitor-lote", f"A rodada falhou:\n{msg}")
-        btn.configure(text="Rodar", command=executar, state="normal")
-
-    def _cancelado() -> None:
-        status.configure(text="Cancelado")
         btn.configure(text="Rodar", command=executar, state="normal")
 
     def _abrir(p: Path) -> None:
@@ -317,6 +298,7 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
             return
         cancel.clear()
         saida = Path(pasta) / "saida"
+        saida.mkdir(parents=True, exist_ok=True)
         p = montar_parametros(
             pasta, tipo_var.get(), motor_var.get(), modo_efetivo(),
             seq_var.get(), int_var.get(),
@@ -324,14 +306,41 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         cfg.ultima_pasta = pasta
         cfgmod.salvar(cfg)
         btn.configure(text="Cancelar", command=cancel.set)  # segue habilitado durante a rodada
+        btn_exportar.configure(state="disabled")
+
+        # renomeia cada arquivo assim que a leitura DELE termina, não só no
+        # final -- se cancelar no meio, o que já terminou já está renomeado
+        # na pasta de saída (ver output.copiar_um / pipeline.rodar).
+        usados: dict[str, int] = {}
+        renomeados = {"n": 0}
+
+        def ao_completar(linha: LinhaResultado) -> None:
+            copiar_um(linha, Path(pasta), saida, usados)
+            if linha.erro != "cancelado":
+                renomeados["n"] += 1
+
+        def _fim(linhas: list[LinhaResultado]) -> None:
+            ok = sum(1 for x in linhas if x.status == "ok")
+            nr = sum(1 for x in linhas if x.status == "nao_reconhecido")
+            er = sum(1 for x in linhas if x.status == "erro")
+            status.configure(text=f"Concluído — {ok} ok, {nr} não reconhecidos, {er} erros")
+            btn.configure(text="Abrir pasta de saída", command=lambda: _abrir(saida), state="normal")
+            btn_exportar.configure(state="normal")
+
+        def _cancelado(linhas: list[LinhaResultado]) -> None:
+            status.configure(text=f"Cancelado — {renomeados['n']} já renomeados antes de parar")
+            btn.configure(text="Rodar", command=executar, state="normal")
+            btn_exportar.configure(state="normal" if linhas else "disabled")
 
         def trabalho() -> None:
             try:
-                linhas = rodar(p, cfg, tipos, progresso, cancel)
+                linhas = rodar(p, cfg, tipos, progresso, cancel, ao_completar=ao_completar)
+                ultimas_linhas.clear()
+                ultimas_linhas.extend(linhas)
                 if cancel.is_set():
-                    root.after(0, _cancelado)
+                    root.after(0, lambda: _cancelado(linhas))
                     return
-                concluir(linhas, saida)
+                root.after(0, lambda: _fim(linhas))
             except Exception as e:  # noqa: BLE001
                 root.after(0, lambda err=e: _erro_fatal(str(err)))
 

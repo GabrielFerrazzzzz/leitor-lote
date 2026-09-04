@@ -1,15 +1,26 @@
 from __future__ import annotations
 
-from functools import cache
+import threading
 
 from leitor_lote.models import PreparedImage, Reading, Tipo
 
+_engine_lock = threading.Lock()
+_engine_instancia = None
 
-@cache
+
 def _engine():
-    from rapidocr_onnxruntime import RapidOCR
+    # sem lock, os N workers da 1a rodada corririam pra construir o RapidOCR()
+    # ao mesmo tempo (cada um carregando o modelo ONNX do zero) -- é isso que
+    # trava a janela por alguns segundos no início. Com o lock, só o primeiro
+    # carrega; os outros esperam e reusam a mesma instância.
+    global _engine_instancia
+    if _engine_instancia is None:
+        with _engine_lock:
+            if _engine_instancia is None:
+                from rapidocr_onnxruntime import RapidOCR
 
-    return RapidOCR()
+                _engine_instancia = RapidOCR()
+    return _engine_instancia
 
 
 class RapidOcrReader:

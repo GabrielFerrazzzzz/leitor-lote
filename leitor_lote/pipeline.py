@@ -69,7 +69,15 @@ def rodar(
     tipos: dict[str, Tipo],
     progresso: Callable[[int, int], None],
     cancel: threading.Event | None = None,
+    ao_completar: Callable[[LinhaResultado], None] | None = None,
 ) -> list[LinhaResultado]:
+    """Roda a leitura de todos os arquivos da pasta (em paralelo, `cfg.concorrencia`
+    workers) e devolve a lista completa ordenada por nome. `ao_completar`, se dado,
+    é chamado uma vez por arquivo assim que a leitura DELE termina (não espera o
+    lote todo) -- é a deixa pra quem chama já ir copiando/renomeando arquivo por
+    arquivo, em vez de só no final. A chamada acontece sempre na mesma thread que
+    chamou `rodar()` (o loop `as_completed` abaixo é sequencial), nunca em paralelo
+    entre si, então quem implementa `ao_completar` não precisa de lock próprio."""
     if not disponivel(p.motor_id, cfg):
         raise ValueError(
             f"O motor {p.motor_id} precisa de uma chave de API. Use 'Configurar chaves…'."
@@ -85,9 +93,12 @@ def rodar(
     with ThreadPoolExecutor(max_workers=max(1, cfg.concorrencia)) as ex:
         futs = [ex.submit(_ler_um, a, p, cfg, tipo, cancel) for a in arquivos]
         for fut in as_completed(futs):
-            resultados.append(fut.result())
+            linha = fut.result()
+            resultados.append(linha)
             feitos += 1
             progresso(feitos, total)
+            if ao_completar is not None:
+                ao_completar(linha)
 
     resultados.sort(key=lambda r: r.arquivo)
     return resultados

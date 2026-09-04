@@ -38,23 +38,20 @@ def test_buscar_tipos_usa_fallback_quando_url_falha(_paths, monkeypatch):
 
     monkeypatch.setattr(httpx, "get", boom)
     tipos = cfgmod.buscar_tipos(cfgmod.carregar())
-    assert set(tipos) == {"canhoto", "pedido", "canhoto_ativa"}
+    # "canhoto_ativa" não existe mais como tipo selecionável -- o usuário final
+    # nunca separa canhoto Ativa do comum, então "canhoto" sozinho já detecta os
+    # dois (ver test_selecao.py::test_lote_misto_*); só sobram 2 tipos reais.
+    assert set(tipos) == {"canhoto", "pedido"}
     assert isinstance(tipos["canhoto"], Tipo)
     assert tipos["pedido"].campos[1].nome == "nota"
     assert tipos["pedido"].campos[1].sequencial is True
     assert tipos["pedido"].campos[0].sequencial is False
-
-    campo_ativa = tipos["canhoto_ativa"].campos[0]
-    assert campo_ativa.estrategia == "chave_offset"
-    assert campo_ativa.chave_tamanho == 44
 
     # canhoto comum detecta sozinho se é Ativa (lote misto) -- offset 29, com fallback
     campo_canhoto = tipos["canhoto"].campos[0]
     assert campo_canhoto.estrategia == "chave_offset_ou_digitos"
     assert campo_canhoto.offset == 29
     assert campo_canhoto.repete is True
-    assert campo_ativa.offset == 29
-    assert campo_ativa.repete is True
 
 
 def test_buscar_tipos_parseia_resposta_http(_paths, monkeypatch):

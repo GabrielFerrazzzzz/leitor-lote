@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from functools import cache
+import threading
 from pathlib import Path
 
 from PIL import Image
@@ -11,15 +11,24 @@ from leitor_lote.models import PreparedImage, Reading, Tipo
 MODEL_ID = "microsoft/trocr-large-handwritten"
 CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "leitor-lote" / "models"
 
+_pipe_lock = threading.Lock()
+_pipe_instancia = None
 
-@cache
+
 def _pipe():
-    from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+    # mesmo risco do RapidOCR (ver rapidocr_reader.py): sem lock, os workers da
+    # 1a rodada correriam pra carregar o modelo (aqui, 1.3GB) ao mesmo tempo.
+    global _pipe_instancia
+    if _pipe_instancia is None:
+        with _pipe_lock:
+            if _pipe_instancia is None:
+                from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    proc = TrOCRProcessor.from_pretrained(MODEL_ID, cache_dir=str(CACHE_DIR))
-    model = VisionEncoderDecoderModel.from_pretrained(MODEL_ID, cache_dir=str(CACHE_DIR))
-    return proc, model
+                CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                proc = TrOCRProcessor.from_pretrained(MODEL_ID, cache_dir=str(CACHE_DIR))
+                model = VisionEncoderDecoderModel.from_pretrained(MODEL_ID, cache_dir=str(CACHE_DIR))
+                _pipe_instancia = (proc, model)
+    return _pipe_instancia
 
 
 class TrOcrReader:

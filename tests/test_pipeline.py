@@ -121,6 +121,25 @@ def test_cancelado_marca_erro(tmp_path, monkeypatch):
     assert all(l.status == "erro" and l.erro == "cancelado" for l in out)
 
 
+def test_ao_completar_chamado_uma_vez_por_arquivo(tmp_path, monkeypatch):
+    # gui.py usa isso pra renomear arquivo por arquivo conforme cada leitura
+    # termina, sem esperar o lote todo (ver output.copiar_um).
+    pasta = _pasta(tmp_path, 5)
+    monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+
+    class _R:
+        def read(self, img, tipo):
+            return Reading(valor="349498", confianca=0.9, motor="rapidocr", bruto="")
+
+    monkeypatch.setattr(pipeline, "resolve", lambda mid, cfg: _R())
+    completados = []
+    out = pipeline.rodar(_params(pasta), Config(), TIPOS, lambda f, t: None,
+                         ao_completar=completados.append)
+    assert len(completados) == 5
+    assert {l.arquivo for l in completados} == {l.arquivo for l in out}
+    assert all(l.status == "ok" for l in completados)
+
+
 def test_descarta_temporarios_de_cada_arquivo(tmp_path, monkeypatch):
     pasta = _pasta(tmp_path, 3)
     monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))

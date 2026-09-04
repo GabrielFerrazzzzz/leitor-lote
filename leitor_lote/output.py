@@ -23,23 +23,39 @@ def _nome_unico(base: str, ext: str, usados: dict[str, int]) -> str:
     return f"{base}{ext}" if n == 1 else f"{base}_{n}{ext}"
 
 
+def copiar_um(
+    linha: LinhaResultado, pasta_entrada: Path, pasta_saida: Path, usados: dict[str, int]
+) -> None:
+    """Copia UM arquivo lido pra `pasta_saida` com o nome renomeado. `usados` é
+    compartilhado entre chamadas (mesmo dict) pra dedupe funcionar no lote inteiro,
+    mesmo chamando arquivo por arquivo conforme cada leitura termina. Pula
+    "cancelado" (arquivo nunca foi lido de verdade -- não é erro de leitura,
+    é só o que sobrou na fila quando o usuário cancelou; não faz sentido copiar
+    como ERRO_)."""
+    if linha.erro == "cancelado":
+        return
+    origem = pasta_entrada / linha.arquivo
+    if not origem.exists():
+        return
+    if linha.status == "erro":
+        base = "ERRO_" + limpar_nome(Path(linha.arquivo).stem)
+    else:
+        base = limpar_nome(linha.texto_lido)
+    destino = pasta_saida / _nome_unico(base, origem.suffix.lower(), usados)
+    shutil.copy2(origem, destino)
+
+
 def copiar_arquivos(linhas: list[LinhaResultado], pasta_saida: Path) -> None:
     """Copia cada arquivo lido para `pasta_saida` com o nome renomeado (número lido,
-    ou ERRO_<nome original> quando a leitura falhou). Não grava CSV nem log — só cópias."""
+    ou ERRO_<nome original> quando a leitura falhou). Não grava CSV nem log — só
+    cópias. Usa `copiar_um` pra cada linha, todas de uma vez (quem quiser copiar
+    conforme cada leitura termina, sem esperar o lote todo, chama `copiar_um`
+    diretamente -- ver gui.py)."""
     pasta_entrada = pasta_saida.parent
     pasta_saida.mkdir(parents=True, exist_ok=True)
     usados: dict[str, int] = {}
-
     for linha in linhas:
-        origem = pasta_entrada / linha.arquivo
-        if not origem.exists():
-            continue
-        if linha.status == "erro":
-            base = "ERRO_" + limpar_nome(Path(linha.arquivo).stem)
-        else:
-            base = limpar_nome(linha.texto_lido)
-        destino = pasta_saida / _nome_unico(base, origem.suffix.lower(), usados)
-        shutil.copy2(origem, destino)
+        copiar_um(linha, pasta_entrada, pasta_saida, usados)
 
 
 def exportar_csv(linhas: list[LinhaResultado], caminho_csv: Path) -> None:

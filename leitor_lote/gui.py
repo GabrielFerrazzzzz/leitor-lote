@@ -61,6 +61,16 @@ def _estilizar_treeview_escuro() -> None:
         relief="flat",
     )
     style.map("Treeview.Heading", background=[("active", "#2b2b2b")])
+    # a barra de rolagem do Treeview também não é CustomTkinter — sem isso ficaria
+    # cinza-claro padrão do tema "clam", destoando do resto escuro.
+    style.configure(
+        "Vertical.TScrollbar",
+        background="#3a3a3a",
+        troughcolor="#212121",
+        bordercolor="#212121",
+        arrowcolor="#dce4ee",
+    )
+    style.map("Vertical.TScrollbar", background=[("active", "#4a4a4a")])
 
 
 def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente

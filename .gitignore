@@ -12,6 +12,10 @@ build/
 dist/
 *.spec.bak
 
+# Instalador (Inno Setup) e zips gerados localmente
+leitor-lote-setup.exe
+leitor-lote-*.zip
+
 # Modelos baixados / caches locais
 models/
 *.pth

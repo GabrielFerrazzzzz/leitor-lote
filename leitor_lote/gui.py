@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+import customtkinter as ctk
+
+from leitor_lote import __version__, atualizacao
 from leitor_lote import config as cfgmod
-from leitor_lote.models import ParametrosRodada
+from leitor_lote.models import LinhaResultado, ParametrosRodada
+from leitor_lote.output import copiar_arquivos, exportar_csv
 from leitor_lote.pipeline import rodar
 from leitor_lote.readers import LOCAIS, MOTORES_IDS, disponivel
 
@@ -30,79 +35,164 @@ def montar_parametros(
     )
 
 
+def _estilizar_treeview_escuro() -> None:
+    """Deixa o ttk.Treeview (única peça que não é CustomTkinter) com uma paleta
+    escura coerente com o resto da janela, em vez de uma ilha clara."""
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure(
+        "Treeview",
+        background="#2b2b2b",
+        foreground="#dce4ee",
+        fieldbackground="#2b2b2b",
+        borderwidth=0,
+        rowheight=22,
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", "#1f6aa5")],
+        foreground=[("selected", "#dce4ee")],
+    )
+    style.configure(
+        "Treeview.Heading",
+        background="#212121",
+        foreground="#dce4ee",
+        borderwidth=0,
+        relief="flat",
+    )
+    style.map("Treeview.Heading", background=[("active", "#2b2b2b")])
+
+
 def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
     cfg = cfgmod.carregar()
     tipos = cfgmod.buscar_tipos(cfg)
     cancel = threading.Event()
+    ultimas_linhas: list[LinhaResultado] = []
 
-    root = tk.Tk()
+    ctk.set_appearance_mode("dark")
+
+    root = ctk.CTk()
     root.title("leitor-lote")
-    root.geometry("460x360")
+    root.geometry("640x780")
+    root.minsize(600, 660)
+
+    # --- banner de atualização disponível (fica oculto até a checagem achar algo) ---
+    banner = ctk.CTkFrame(root, fg_color="#1e2f3f", corner_radius=0)
+    banner_label = ctk.CTkLabel(
+        banner, text="", text_color="#eaf2f8", font=ctk.CTkFont(weight="bold")
+    )
+    banner_label.pack(side="left", padx=(14, 8), pady=8)
+    banner_btn = ctk.CTkButton(
+        banner,
+        text="Atualizar",
+        width=100,
+        command=lambda: webbrowser.open(atualizacao.URL_INSTALADOR),
+    )
+    banner_btn.pack(side="right", padx=14, pady=8)
+
+    frm = ctk.CTkFrame(root)
+    frm.pack(fill="both", expand=True, padx=14, pady=14)
+    frm.grid_columnconfigure(1, weight=1)
+
+    def _mostrar_banner_atualizacao(remota: str) -> None:
+        banner_label.configure(text=f"Nova versão {remota} disponível")
+        banner.pack(side="top", fill="x", before=frm)
+
+    def _checar_atualizacao() -> None:
+        remota = atualizacao.versao_mais_recente()
+        if remota and atualizacao.versao_e_mais_nova(__version__, remota):
+            root.after(0, lambda: _mostrar_banner_atualizacao(remota))
+
+    threading.Thread(target=_checar_atualizacao, daemon=True).start()
 
     pasta_var = tk.StringVar(value=cfg.ultima_pasta or "")
     tipo_var = tk.StringVar(value=next(iter(tipos)))
-    modo_var = tk.StringVar(value=tipos[tipo_var.get()].modo)
     motor_var = tk.StringVar(value=tipos[tipo_var.get()].motor)
+    fallback_var = tk.BooleanVar(value=tipos[tipo_var.get()].modo != "ocr")
     seq_var = tk.StringVar()
     int_var = tk.StringVar()
-
-    frm = ttk.Frame(root, padding=12)
-    frm.pack(fill="both", expand=True)
 
     def escolher_pasta() -> None:
         d = filedialog.askdirectory(initialdir=pasta_var.get() or None)
         if d:
             pasta_var.set(d)
 
-    ttk.Label(frm, text="Pasta").grid(row=0, column=0, sticky="w")
-    ttk.Entry(frm, textvariable=pasta_var, width=36).grid(row=0, column=1)
-    ttk.Button(frm, text="Procurar", command=escolher_pasta).grid(row=0, column=2)
+    ctk.CTkLabel(frm, text="Pasta").grid(row=0, column=0, sticky="w", pady=4)
+    ctk.CTkEntry(frm, textvariable=pasta_var).grid(row=0, column=1, sticky="we", padx=6)
+    ctk.CTkButton(frm, text="Procurar", width=90, command=escolher_pasta).grid(row=0, column=2)
 
-    ttk.Label(frm, text="Tipo").grid(row=1, column=0, sticky="w")
-    cb_tipo = ttk.Combobox(frm, textvariable=tipo_var, values=list(tipos), state="readonly")
-    cb_tipo.grid(row=1, column=1, columnspan=2, sticky="we")
+    ctk.CTkLabel(frm, text="Tipo").grid(row=1, column=0, sticky="w", pady=4)
+    cb_tipo = ctk.CTkComboBox(frm, variable=tipo_var, values=list(tipos), state="readonly")
+    cb_tipo.grid(row=1, column=1, columnspan=2, sticky="we", padx=6)
 
-    ttk.Label(frm, text="Modo").grid(row=2, column=0, sticky="w")
-    cb_modo = ttk.Combobox(frm, textvariable=modo_var, values=["ocr", "ia", "auto"],
-                           state="readonly")
-    cb_modo.grid(row=2, column=1, columnspan=2, sticky="we")
+    ctk.CTkLabel(frm, text="Motor").grid(row=2, column=0, sticky="w", pady=4)
+    cb_motor = ctk.CTkComboBox(frm, variable=motor_var, state="readonly")
+    cb_motor.grid(row=2, column=1, columnspan=2, sticky="we", padx=6)
 
-    ttk.Label(frm, text="Motor").grid(row=3, column=0, sticky="w")
-    cb_motor = ttk.Combobox(frm, textvariable=motor_var, state="readonly")
-    cb_motor.grid(row=3, column=1, columnspan=2, sticky="we")
+    chk_fallback = ctk.CTkCheckBox(
+        frm,
+        text="Se não reconhecer, tentar de novo com IA",
+        variable=fallback_var,
+        onvalue=True,
+        offvalue=False,
+    )
+    chk_fallback.grid(row=3, column=0, columnspan=3, sticky="w", pady=(2, 6))
+
+    def _motor_e_local(motor_id: str) -> bool:
+        return motor_id.split(":")[0] in LOCAIS
+
+    def modo_efetivo() -> str:
+        """Traduz Motor + checkbox de fallback para o `modo` interno que o pipeline
+        espera ("ocr"/"ia"/"auto") — ver ParametrosRodada.modo."""
+        if _motor_e_local(motor_var.get()):
+            return "auto" if fallback_var.get() else "ocr"
+        return "ia"
+
+    def atualizar_visibilidade_fallback(*_a) -> None:
+        if _motor_e_local(motor_var.get()):
+            chk_fallback.grid()
+        else:
+            chk_fallback.grid_remove()
+
+    def opcoes_completas() -> list[tuple[str, bool]]:
+        # une motores locais (ocr) e de API (ia) num único combo — opcoes_motor
+        # continua igual, só é chamada duas vezes e o resultado é mesclado.
+        return opcoes_motor("ocr", cfg) + opcoes_motor("ia", cfg)
 
     def atualizar_motores(*_a) -> None:
-        opts = opcoes_motor(modo_var.get(), cfg)
+        opts = opcoes_completas()
         habilitados = [m for m, ok in opts if ok]
         # só mostra o que dá pra usar; se nada tem chave, mostra todos (o Rodar avisa)
-        cb_motor["values"] = habilitados or [m for m, _ in opts]
+        cb_motor.configure(values=habilitados or [m for m, _ in opts])
         if motor_var.get() not in habilitados and habilitados:
             motor_var.set(habilitados[0])
+        atualizar_visibilidade_fallback()
 
     def ao_trocar_tipo(*_a) -> None:
         t = tipos[tipo_var.get()]
-        modo_var.set(t.modo)
         motor_var.set(t.motor)
+        fallback_var.set(t.modo != "ocr")
         atualizar_motores()
 
     tipo_var.trace_add("write", ao_trocar_tipo)
-    modo_var.trace_add("write", atualizar_motores)
+    motor_var.trace_add("write", atualizar_visibilidade_fallback)
     atualizar_motores()
 
-    ttk.Label(frm, text="Sequência esperada").grid(row=4, column=0, sticky="w")
-    ttk.Entry(frm, textvariable=seq_var).grid(row=4, column=1, columnspan=2, sticky="we")
-    ttk.Label(frm, text="Intervalo máximo").grid(row=5, column=0, sticky="w")
-    ttk.Entry(frm, textvariable=int_var).grid(row=5, column=1, columnspan=2, sticky="we")
+    ctk.CTkLabel(frm, text="Sequência esperada").grid(row=4, column=0, sticky="w", pady=4)
+    ctk.CTkEntry(frm, textvariable=seq_var).grid(row=4, column=1, columnspan=2, sticky="we", padx=6)
+    ctk.CTkLabel(frm, text="Intervalo máximo").grid(row=5, column=0, sticky="w", pady=4)
+    ctk.CTkEntry(frm, textvariable=int_var).grid(row=5, column=1, columnspan=2, sticky="we", padx=6)
 
     def configurar_chaves() -> None:
-        d = tk.Toplevel(root)
+        d = ctk.CTkToplevel(root)
         d.title("Chaves")
+        d.geometry("400x180")
         o = tk.StringVar(value=cfg.chave_openai or "")
         m = tk.StringVar(value=cfg.chave_mistral or "")
-        ttk.Label(d, text="OpenAI").grid(row=0, column=0)
-        ttk.Entry(d, textvariable=o, show="*", width=40).grid(row=0, column=1)
-        ttk.Label(d, text="Mistral").grid(row=1, column=0)
-        ttk.Entry(d, textvariable=m, show="*", width=40).grid(row=1, column=1)
+        ctk.CTkLabel(d, text="OpenAI").grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        ctk.CTkEntry(d, textvariable=o, show="*", width=220).grid(row=0, column=1, padx=10, pady=10)
+        ctk.CTkLabel(d, text="Mistral").grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        ctk.CTkEntry(d, textvariable=m, show="*", width=220).grid(row=1, column=1, padx=10, pady=10)
 
         def salvar_() -> None:
             cfg.chave_openai = o.get().strip() or None
@@ -111,44 +201,99 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
             atualizar_motores()
             d.destroy()
 
-        ttk.Button(d, text="Salvar", command=salvar_).grid(row=2, column=0, columnspan=2)
+        ctk.CTkButton(d, text="Salvar", command=salvar_).grid(row=2, column=0, columnspan=2, pady=10)
 
-    ttk.Button(frm, text="Configurar chaves…", command=configurar_chaves).grid(
+    ctk.CTkButton(frm, text="Configurar chaves…", command=configurar_chaves).grid(
         row=6, column=0, columnspan=3, pady=(8, 0)
     )
 
-    barra = ttk.Progressbar(frm, maximum=100)
+    barra = ctk.CTkProgressBar(frm)
+    barra.set(0)
     barra.grid(row=7, column=0, columnspan=3, sticky="we", pady=8)
-    status = ttk.Label(frm, text="")
+    status = ctk.CTkLabel(frm, text="")
     status.grid(row=8, column=0, columnspan=3)
-    btn = ttk.Button(frm, text="Rodar")
-    btn.grid(row=9, column=0, columnspan=3)
+    btn = ctk.CTkButton(frm, text="Rodar")
+    btn.grid(row=9, column=0, columnspan=3, pady=(0, 8))
+
+    # --- resultados da última rodada ---
+    frm.grid_rowconfigure(10, weight=1)
+    tabela_frame = ctk.CTkFrame(frm, fg_color="transparent")
+    tabela_frame.grid(row=10, column=0, columnspan=3, sticky="nsew", pady=(0, 6))
+    tabela_frame.grid_columnconfigure(0, weight=1)
+    tabela_frame.grid_rowconfigure(0, weight=1)
+
+    _estilizar_treeview_escuro()
+
+    colunas = ("arquivo", "lido", "confianca", "motor", "status")
+    titulos = {
+        "arquivo": "Arquivo",
+        "lido": "Lido",
+        "confianca": "Confiança",
+        "motor": "Motor",
+        "status": "Status",
+    }
+    tree = ttk.Treeview(tabela_frame, columns=colunas, show="headings", height=8)
+    for c in colunas:
+        tree.heading(c, text=titulos[c])
+        tree.column(c, width=110, anchor="w")
+    vsb = ttk.Scrollbar(tabela_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    vsb.grid(row=0, column=1, sticky="ns")
+
+    def _popular_resultados(linhas: list[LinhaResultado]) -> None:
+        ultimas_linhas.clear()
+        ultimas_linhas.extend(linhas)
+        tree.delete(*tree.get_children())
+        for linha in linhas:
+            conf = "" if linha.confianca is None else f"{linha.confianca:.3f}"
+            tree.insert(
+                "", "end", values=(linha.arquivo, linha.texto_lido, conf, linha.motor, linha.status)
+            )
+        btn_exportar.configure(state="normal")
+
+    def _exportar_csv_click() -> None:
+        if not ultimas_linhas:
+            return
+        caminho = filedialog.asksaveasfilename(
+            title="Exportar CSV",
+            defaultextension=".csv",
+            initialfile="resultado.csv",
+            filetypes=[("CSV", "*.csv"), ("Todos os arquivos", "*.*")],
+        )
+        if not caminho:
+            return
+        exportar_csv(ultimas_linhas, Path(caminho))
+
+    btn_exportar = ctk.CTkButton(
+        frm, text="Exportar CSV…", command=_exportar_csv_click, state="disabled"
+    )
+    btn_exportar.grid(row=11, column=0, columnspan=3, pady=(0, 4))
 
     def progresso(feitos: int, total: int) -> None:
-        pct = 0 if total == 0 else int(100 * feitos / total)
-        root.after(0, lambda: (barra.config(value=pct), status.config(text=f"{feitos} de {total}")))
+        frac = 0.0 if total == 0 else feitos / total
+        root.after(0, lambda: (barra.set(frac), status.configure(text=f"{feitos} de {total}")))
 
-    def concluir(linhas, saida: Path) -> None:
-        from leitor_lote.output import gravar
-
-        gravar(linhas, saida)
+    def concluir(linhas: list[LinhaResultado], saida: Path) -> None:
+        copiar_arquivos(linhas, saida)
         ok = sum(1 for x in linhas if x.status == "ok")
         nr = sum(1 for x in linhas if x.status == "nao_reconhecido")
         er = sum(1 for x in linhas if x.status == "erro")
-        root.after(0, lambda: _fim(saida, ok, nr, er))
+        root.after(0, lambda: _fim(saida, linhas, ok, nr, er))
 
-    def _fim(saida: Path, ok: int, nr: int, er: int) -> None:
-        status.config(text=f"Concluído — {ok} ok, {nr} não reconhecidos, {er} erros")
-        btn.config(text="Abrir pasta de saída", command=lambda: _abrir(saida), state="normal")
+    def _fim(saida: Path, linhas: list[LinhaResultado], ok: int, nr: int, er: int) -> None:
+        status.configure(text=f"Concluído — {ok} ok, {nr} não reconhecidos, {er} erros")
+        btn.configure(text="Abrir pasta de saída", command=lambda: _abrir(saida), state="normal")
+        _popular_resultados(linhas)
 
     def _erro_fatal(msg: str) -> None:
-        status.config(text="Falhou")
+        status.configure(text="Falhou")
         messagebox.showerror("leitor-lote", f"A rodada falhou:\n{msg}")
-        btn.config(text="Rodar", command=executar, state="normal")
+        btn.configure(text="Rodar", command=executar, state="normal")
 
     def _cancelado() -> None:
-        status.config(text="Cancelado")
-        btn.config(text="Rodar", command=executar, state="normal")
+        status.configure(text="Cancelado")
+        btn.configure(text="Rodar", command=executar, state="normal")
 
     def _abrir(p: Path) -> None:
         import os
@@ -163,12 +308,12 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         cancel.clear()
         saida = Path(pasta) / "saida"
         p = montar_parametros(
-            pasta, tipo_var.get(), motor_var.get(), modo_var.get(),
+            pasta, tipo_var.get(), motor_var.get(), modo_efetivo(),
             seq_var.get(), int_var.get(),
         )
         cfg.ultima_pasta = pasta
         cfgmod.salvar(cfg)
-        btn.config(text="Cancelar", command=cancel.set)  # segue habilitado durante a rodada
+        btn.configure(text="Cancelar", command=cancel.set)  # segue habilitado durante a rodada
 
         def trabalho() -> None:
             try:
@@ -182,5 +327,5 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
 
         threading.Thread(target=trabalho, daemon=True).start()
 
-    btn.config(command=executar)
+    btn.configure(command=executar)
     root.mainloop()

@@ -13,6 +13,7 @@ dependencies = [
     "httpx>=0.27",
     "rapidocr-onnxruntime>=1.4.4",
     "opencv-python>=4.10",
+    "customtkinter>=5.2",
 ]
 
 [project.optional-dependencies]

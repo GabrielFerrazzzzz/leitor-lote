@@ -6,6 +6,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 datas = [("leitor_lote/tipos.fallback.json", "leitor_lote")]
 datas += collect_data_files("rapidocr_onnxruntime")  # modelos .onnx + config.yaml
 datas += collect_data_files("pypdfium2_raw")
+datas += collect_data_files("customtkinter")  # temas .json + fontes do CustomTkinter
 
 binaries = []
 _tess = shutil.which("tesseract")

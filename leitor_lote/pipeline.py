@@ -33,39 +33,52 @@ def _melhor_de_paginas(reader, paginas, tipo, p):
     return melhor
 
 
+def _tentar_secundario(motor_id, arquivo, paginas_ocr, principal_e_ocr,
+                       p, cfg, tipo, preparados):
+    """Tenta um motor secundário (fallback). Devolve (leitura, v) se rodou, ou
+    None se o motor não está disponível OU se levantou exceção. Um fallback que
+    quebra (ex.: TrOCR sem o modelo baixado, ou API sem rede) NÃO derruba o
+    resultado do motor principal pra 'erro' -- só é ignorado."""
+    if not motor_id or not disponivel(motor_id, cfg):
+        return None
+    try:
+        local = motor_id.split(":")[0] in LOCAIS
+        if local and principal_e_ocr:
+            paginas = paginas_ocr  # reusa as páginas já preparadas pra OCR
+        else:
+            paginas = preparar(arquivo, para_ocr=local)
+            preparados.extend(paginas)
+        return _melhor_de_paginas(resolve(motor_id, cfg), paginas, tipo, p)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _ler_um(arquivo: Path, p: ParametrosRodada, cfg: Config, tipo: Tipo,
             cancel: threading.Event) -> LinhaResultado:
     if cancel.is_set():
         return LinhaResultado(arquivo.name, "", None, "", "erro", "cancelado")
     preparados: list = []
     try:
-        paginas = preparar(arquivo, para_ocr=p.modo != "ia")
+        principal_e_ocr = p.modo != "ia"
+        paginas = preparar(arquivo, para_ocr=principal_e_ocr)
         preparados.extend(paginas)
-        reader = resolve(p.motor_id, cfg)
-        leitura, v = _melhor_de_paginas(reader, paginas, tipo, p)
+        leitura, v = _melhor_de_paginas(resolve(p.motor_id, cfg), paginas, tipo, p)
 
-        # fallback 1: outro motor escolhido pelo usuário (antes da IA). Só quando
-        # o principal não reconheceu. Se o motor de fallback for local, reusa as
-        # páginas já preparadas pra OCR; se for de IA, prepara sem OCR.
-        fb = p.motor_fallback
-        if not v.aprovado and fb and fb != p.motor_id and disponivel(fb, cfg):
-            fb_local = fb.split(":")[0] in LOCAIS
-            if fb_local and p.modo != "ia":  # `paginas` já está preparado pra OCR
-                paginas_fb = paginas
-            else:
-                paginas_fb = preparar(arquivo, para_ocr=fb_local)
-                preparados.extend(paginas_fb)
-            res_fb = _melhor_de_paginas(resolve(fb, cfg), paginas_fb, tipo, p)
+        # fallback 1: outro motor escolhido pelo usuário (antes da IA), só quando
+        # o principal não reconheceu. Se esse motor quebrar, mantém o resultado
+        # do principal (ver _tentar_secundario).
+        if not v.aprovado and p.motor_fallback and p.motor_fallback != p.motor_id:
+            res_fb = _tentar_secundario(p.motor_fallback, arquivo, paginas,
+                                        principal_e_ocr, p, cfg, tipo, preparados)
             if res_fb and (res_fb[1].aprovado or not v.aprovado):
                 leitura, v = res_fb
 
+        # fallback 2: IA (modo auto) — inalterado, só passou a usar o helper
         if p.modo == "auto":
             baixa_conf = leitura.confianca is not None and leitura.confianca < cfg.limiar_confianca
-            if (not v.aprovado or baixa_conf) and disponivel(cfg.motor_ia_fallback, cfg):
-                r2 = resolve(cfg.motor_ia_fallback, cfg)
-                paginas_ia = preparar(arquivo, para_ocr=False)
-                preparados.extend(paginas_ia)
-                res2 = _melhor_de_paginas(r2, paginas_ia, tipo, p)
+            if not v.aprovado or baixa_conf:
+                res2 = _tentar_secundario(cfg.motor_ia_fallback, arquivo, paginas,
+                                          principal_e_ocr, p, cfg, tipo, preparados)
                 if res2 and (res2[1].aprovado or not v.aprovado):
                     leitura, v = res2
 

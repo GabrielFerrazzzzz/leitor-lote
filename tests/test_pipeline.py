@@ -122,6 +122,29 @@ def test_motor_fallback_nao_e_chamado_se_principal_ja_reconhece(tmp_path, monkey
     assert chamou["fallback"] is False
 
 
+def test_motor_fallback_que_explode_nao_derruba_o_principal(tmp_path, monkeypatch):
+    # bug real do Gabriel: TrOCR de fallback sem o modelo baixado levantava
+    # exceção e o arquivo virava ERRO_ em vez de manter o "nao_reconhecido"
+    # do motor principal.
+    pasta = _pasta(tmp_path, 1)
+    monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+
+    class _Principal:
+        def read(self, img, tipo):
+            return Reading(valor="12", confianca=0.9, motor="rapidocr", bruto="")
+
+    class _FallbackQuebrado:
+        def read(self, img, tipo):
+            raise RuntimeError("modelo trocr nao baixado")
+
+    monkeypatch.setattr(pipeline, "resolve",
+                        lambda mid, cfg: _FallbackQuebrado() if mid == "trocr" else _Principal())
+    out = pipeline.rodar(_params(pasta, modo="ocr", motor="rapidocr", motor_fallback="trocr"),
+                         Config(), TIPOS, lambda f, t: None)
+    assert out[0].status == "nao_reconhecido"  # NÃO "erro"
+    assert out[0].erro is None
+
+
 def test_motor_fallback_indisponivel_e_ignorado(tmp_path, monkeypatch):
     pasta = _pasta(tmp_path, 1)
     monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))

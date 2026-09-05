@@ -9,6 +9,14 @@ def _digitos(s: str) -> str:
     return re.sub(r"\D", "", s)
 
 
+def _e_so_numero(p: str, tamanho: int) -> bool:
+    """`p` é uma resposta já estruturada (só os dígitos, fora espaços) do tamanho
+    certo? Sem isso, um blob de texto de OCR que por acaso tem `tamanho` dígitos
+    no meio passava pelos curto-circuitos de 'resposta da IA' abaixo."""
+    d = re.sub(r"\s", "", p)
+    return d.isdigit() and len(d) == tamanho
+
+
 def _janelas(digitos: str, n: int) -> list[str]:
     return [digitos[i : i + n] for i in range(len(digitos) - n + 1)]
 
@@ -64,10 +72,10 @@ def escolher(
 ) -> Reading:
     n = len(tipo.campos)
     # caminho IA: o motor já entregou a resposta estruturada ("<a> - <b>", cada
-    # parte com exatamente os dígitos do campo) -> repassa intacto
+    # parte sendo só os dígitos do campo) -> repassa intacto
     partes = [p.strip() for p in r.valor.split(" - ")]
     if len(partes) == n and all(
-        len(_digitos(p)) == c.tamanho for p, c in zip(partes, tipo.campos)
+        _e_so_numero(p, c.tamanho) for p, c in zip(partes, tipo.campos)
     ):
         return r
 
@@ -75,7 +83,7 @@ def escolher(
     # motor já entregou "<a> | <b>" estruturado -> repassa intacto
     if n == 1 and tipo.campos[0].repete:
         pecas = [p.strip() for p in r.valor.split(" | ") if p.strip()]
-        if pecas and all(len(_digitos(p)) == tipo.campos[0].tamanho for p in pecas):
+        if pecas and all(_e_so_numero(p, tipo.campos[0].tamanho) for p in pecas):
             return r
 
     faixa = None

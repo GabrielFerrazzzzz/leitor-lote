@@ -156,6 +156,17 @@ def test_ancora_no_na_linha_anterior_quando_numero_sozinho():
     assert saida.valor == "385338"
 
 
+def test_blob_de_texto_com_6_digitos_nao_passa_como_resposta():
+    # página esparsa: o texto todo tem por acaso 6 dígitos (DE 1 ... SERIE 1 ...
+    # 2 4 08). Antes, o curto-circuito de "resposta da IA" repassava o blob
+    # inteiro como se fosse a resposta -> arquivo virava "ok" com nome gigante.
+    blob = "Pagina l de 1 NF-e Recebemos de SOMA SERIE 1 DA UNIVERSIDADE 2 4 08"
+    assert len(__import__("re").sub(r"\D", "", blob)) == 6  # tem exatamente 6 dígitos
+    saida = escolher(_r(blob), CANHOTO_MISTO, None, None)
+    assert saida.valor != blob
+    assert len(saida.valor) <= 6  # ou o número achado por scan, ou "" (não reconhecido)
+
+
 def test_chave_offset_dedupa_e_limita_repeticoes():
     # bug real (WinError 3): página densa com dezenas de linhas de 44+ dígitos
     # virava um texto_lido gigante -> nome de arquivo estourava o MAX_PATH.

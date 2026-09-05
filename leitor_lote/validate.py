@@ -32,7 +32,12 @@ def avaliar(
             # cada ocorrência é independente: uma ruim não derruba as outras
             # (mesmo espírito do "sibling survival" entre campos diferentes)
             pecas = [p.strip() for p in parte.split(" | ") if p.strip()]
-            com_digitos_ok = [p for p in pecas if len(_digitos(p)) == campo.tamanho]
+            # cada peça tem que ser só o número (fora espaços), não um trecho de
+            # texto que por acaso tem `tamanho` dígitos no meio
+            com_digitos_ok = [
+                _digitos(p) for p in pecas
+                if re.sub(r"\s", "", p).isdigit() and len(_digitos(p)) == campo.tamanho
+            ]
             validas = list(dict.fromkeys(com_digitos_ok))  # mesma chave repetida é ruído
             if not validas:
                 saidas.append(NAO_RECONHECIDO)

@@ -8,6 +8,18 @@ _engine_lock = threading.Lock()
 _engine_instancia = None
 
 
+# cada inferência ONNX, com a config padrão do rapidocr (intra_op_num_threads=-1),
+# tenta usar TODOS os núcleos. Com `concorrencia` workers Python chamando o mesmo
+# engine, isso vira N×núcleos de threads brigando -> a CPU satura e a máquina
+# trava. Limitando o intra-op a 2, N workers ≈ N×2 threads, controlado.
+_OPTS_THREADS = {
+    "Det.intra_op_num_threads": 2,
+    "Cls.intra_op_num_threads": 2,
+    "Rec.intra_op_num_threads": 2,
+    "Global.inter_op_num_threads": 1,
+}
+
+
 def _engine():
     # sem lock, os N workers da 1a rodada corririam pra construir o RapidOCR()
     # ao mesmo tempo (cada um carregando o modelo ONNX do zero) -- é isso que
@@ -19,7 +31,10 @@ def _engine():
             if _engine_instancia is None:
                 from rapidocr_onnxruntime import RapidOCR
 
-                _engine_instancia = RapidOCR()
+                try:
+                    _engine_instancia = RapidOCR(**_OPTS_THREADS)
+                except TypeError:  # versão do rapidocr sem esses kwargs
+                    _engine_instancia = RapidOCR()
     return _engine_instancia
 
 

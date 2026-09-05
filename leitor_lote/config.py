@@ -20,7 +20,7 @@ class Config:
     chave_mistral: str | None = None
     ultima_pasta: str | None = None
     motor_padrao: str | None = None
-    concorrencia: int = 5
+    concorrencia: int = 3
     limiar_confianca: float = 0.6
     motor_ia_fallback: str = "openai:gpt-5-mini"
     tipos_url: str = "https://raw.githubusercontent.com/GabrielFerrazzzzz/leitor-lote/main/tipos.json"
@@ -39,7 +39,7 @@ def carregar() -> Config:
         try:
             c.concorrencia = int(c.concorrencia)
         except (TypeError, ValueError):
-            c.concorrencia = 5
+            c.concorrencia = Config.__dataclass_fields__["concorrencia"].default
         try:
             c.limiar_confianca = float(c.limiar_confianca)
         except (TypeError, ValueError):

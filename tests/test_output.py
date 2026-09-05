@@ -52,6 +52,31 @@ def test_cancelado_nao_e_copiado(tmp_path):
     assert not (ent / "saida").exists() or not list((ent / "saida").iterdir())
 
 
+def test_copiar_um_texto_gigante_nao_quebra_e_trunca_o_nome(tmp_path):
+    # bug real (WinError 3): um texto_lido gigante gerava um caminho maior que o
+    # limite do Windows e shutil.copy2 derrubava o lote inteiro. Agora trunca.
+    ent = _entrada(tmp_path, ["a.jpg"])
+    saida = ent / "saida"
+    saida.mkdir()
+    gigante = " | ".join(["385273"] * 200)  # ~1600 chars
+    output.copiar_um(
+        LinhaResultado("a.jpg", gigante, 0.9, "rapidocr", "ok", None), ent, saida, {}
+    )
+    copiados = list(saida.iterdir())
+    assert len(copiados) == 1
+    assert len(copiados[0].name) < 200  # coube num caminho normal
+
+
+def test_copiar_um_falha_de_copia_nao_propaga(tmp_path):
+    # se um arquivo não copia (nome/caminho, permissão), o lote não pode parar.
+    ent = _entrada(tmp_path, ["a.jpg"])
+    saida = ent / "nao" / "existe"  # pasta pai inexistente -> copy2 daria OSError
+    # não deve levantar
+    output.copiar_um(
+        LinhaResultado("a.jpg", "349498", 0.9, "rapidocr", "ok", None), ent, saida, {}
+    )
+
+
 def test_copiar_um_progressivo_com_mesmo_usados_dedupe_igual_ao_lote(tmp_path):
     # simula o fluxo da janela: cada arquivo é copiado assim que sua leitura
     # termina (não só no final), reusando o mesmo dict `usados` entre chamadas

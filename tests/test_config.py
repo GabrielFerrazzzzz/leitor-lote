@@ -17,7 +17,7 @@ def _paths(tmp_path, monkeypatch):
 
 def test_carregar_cria_default(_paths):
     c = cfgmod.carregar()
-    assert c.concorrencia == 5
+    assert c.concorrencia == 3
     assert c.motor_ia_fallback == "openai:gpt-5-mini"
     assert (cfgmod.CONFIG_PATH).exists()
 
@@ -81,15 +81,15 @@ def test_carregar_config_corrompido_reescreve_default(_paths):
     cfgmod.CONFIG_PATH.write_text("{ not json", "utf-8")
     c = cfgmod.carregar()
     assert isinstance(c, cfgmod.Config)
-    assert c.concorrencia == 5
+    assert c.concorrencia == 3
     # o arquivo corrompido foi reescrito com JSON válido
-    assert json.loads(cfgmod.CONFIG_PATH.read_text("utf-8"))["concorrencia"] == 5
+    assert json.loads(cfgmod.CONFIG_PATH.read_text("utf-8"))["concorrencia"] == 3
 
 
 def test_carregar_coage_concorrencia_invalida(_paths):
     _paths.mkdir(parents=True, exist_ok=True)
     cfgmod.CONFIG_PATH.write_text(json.dumps({"concorrencia": "cinco"}), "utf-8")
-    assert cfgmod.carregar().concorrencia == 5
+    assert cfgmod.carregar().concorrencia == 3
 
 
 def test_chave_nunca_alem_do_config(_paths):

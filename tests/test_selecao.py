@@ -154,3 +154,20 @@ def test_ancora_no_na_linha_anterior_quando_numero_sozinho():
     entrada = "No.\n385338\n129384\nCNPJ:12.345.678/0001-99"
     saida = escolher(_r(entrada), CANHOTO, None, None)
     assert saida.valor == "385338"
+
+
+def test_chave_offset_dedupa_e_limita_repeticoes():
+    # bug real (WinError 3): página densa com dezenas de linhas de 44+ dígitos
+    # virava um texto_lido gigante -> nome de arquivo estourava o MAX_PATH.
+    # Agora dedupa (chave repetida = ruído) e limita a 8.
+    prefixo, sufixo = "1" * 28, "9" * 10
+    # 3 valores distintos em 30 linhas
+    linhas = [prefixo + f"{i % 3:06d}" + sufixo for i in range(30)]
+    saida = escolher(_r("\n".join(linhas)), CANHOTO_MISTO, None, None)
+    pecas = saida.valor.split(" | ")
+    assert pecas == ["000000", "000001", "000002"]
+
+    # 12 valores distintos -> corta em 8
+    linhas12 = [prefixo + f"{i:06d}" + sufixo for i in range(12)]
+    saida12 = escolher(_r("\n".join(linhas12)), CANHOTO_MISTO, None, None)
+    assert len(saida12.valor.split(" | ")) == 8

@@ -34,11 +34,18 @@ def _tem_ancora(linhas: list[str], i: int) -> bool:
     return bool(anterior) and not _digitos(anterior) and bool(_RE_ANCORA_NUMERO.search(anterior))
 
 
+# um documento real tem 1-3 chaves. Uma página densa (tabela de produtos de um
+# DANFE) pode ter dezenas de linhas com 44+ dígitos e virar dezenas de "chaves"
+# de ruído -> nome de arquivo gigante -> [WinError 3] na cópia. Dedupe + teto.
+_MAX_REPETE = 8
+
+
 def _valores_chave_offset(linhas: list[str], campo: Campo) -> list[str]:
     """Acha, em cada linha com dígitos suficientes pra ser uma chave de acesso
     (NF-e/CT-e, sempre `chave_tamanho` dígitos), o pedaço de `tamanho` dígitos
     que começa na posição 1-indexada `offset` dentro dela. Uma linha só rende
-    um valor; `repete=True` em quem chama decide se usa todos ou só o 1º."""
+    um valor; `repete=True` em quem chama decide se usa todos ou só o 1º.
+    Dedupa (mesma chave repetida é ruído) e limita a `_MAX_REPETE`."""
     achados: list[str] = []
     for ln in linhas:
         d = _digitos(ln)
@@ -49,7 +56,7 @@ def _valores_chave_offset(linhas: list[str], campo: Campo) -> list[str]:
         pedaco = chave[inicio : inicio + campo.tamanho]
         if len(pedaco) == campo.tamanho:
             achados.append(pedaco)
-    return achados
+    return list(dict.fromkeys(achados))[:_MAX_REPETE]
 
 
 def escolher(

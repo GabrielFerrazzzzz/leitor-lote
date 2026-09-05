@@ -37,12 +37,21 @@ def copiar_um(
     origem = pasta_entrada / linha.arquivo
     if not origem.exists():
         return
+    ext = origem.suffix.lower()
     if linha.status == "erro":
         base = "ERRO_" + limpar_nome(Path(linha.arquivo).stem)
     else:
         base = limpar_nome(linha.texto_lido)
-    destino = pasta_saida / _nome_unico(base, origem.suffix.lower(), usados)
-    shutil.copy2(origem, destino)
+    # trava de segurança: um texto_lido gigante (ex.: OCR ruidoso num DANFE denso
+    # devolvendo dezenas de "chaves") geraria um nome que estoura o limite de
+    # caminho do Windows -> shutil.copy2 dava [WinError 3] e derrubava o lote todo.
+    limite = max(8, 240 - len(str(pasta_saida)) - len(ext) - 5)  # 5 = "/", "_NN"
+    base = base[:limite]
+    destino = pasta_saida / _nome_unico(base, ext, usados)
+    try:
+        shutil.copy2(origem, destino)
+    except OSError:
+        pass  # um arquivo que não copia (nome/caminho, permissão) não para o lote
 
 
 def copiar_arquivos(linhas: list[LinhaResultado], pasta_saida: Path) -> None:

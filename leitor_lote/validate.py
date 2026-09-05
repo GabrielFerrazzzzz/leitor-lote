@@ -32,14 +32,15 @@ def avaliar(
             # cada ocorrência é independente: uma ruim não derruba as outras
             # (mesmo espírito do "sibling survival" entre campos diferentes)
             pecas = [p.strip() for p in parte.split(" | ") if p.strip()]
-            validas = [p for p in pecas if len(_digitos(p)) == campo.tamanho]
+            com_digitos_ok = [p for p in pecas if len(_digitos(p)) == campo.tamanho]
+            validas = list(dict.fromkeys(com_digitos_ok))  # mesma chave repetida é ruído
             if not validas:
                 saidas.append(NAO_RECONHECIDO)
                 motivos.append(f"{campo.nome}: nenhuma ocorrência válida encontrada")
                 continue
-            if len(validas) < len(pecas):
+            if len(com_digitos_ok) < len(pecas):
                 motivos.append(
-                    f"{campo.nome}: {len(pecas) - len(validas)} ocorrência(s) descartada(s) "
+                    f"{campo.nome}: {len(pecas) - len(com_digitos_ok)} ocorrência(s) descartada(s) "
                     "(nº de dígitos errado)"
                 )
             saidas.append(" | ".join(validas))

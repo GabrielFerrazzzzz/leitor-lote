@@ -8,7 +8,7 @@ from pathlib import Path
 from leitor_lote.config import Config
 from leitor_lote.models import LinhaResultado, ParametrosRodada, Tipo
 from leitor_lote.preprocess import descartar, preparar
-from leitor_lote.readers import disponivel, resolve
+from leitor_lote.readers import LOCAIS, disponivel, resolve
 from leitor_lote.selecao import escolher
 from leitor_lote.validate import avaliar
 
@@ -43,6 +43,21 @@ def _ler_um(arquivo: Path, p: ParametrosRodada, cfg: Config, tipo: Tipo,
         preparados.extend(paginas)
         reader = resolve(p.motor_id, cfg)
         leitura, v = _melhor_de_paginas(reader, paginas, tipo, p)
+
+        # fallback 1: outro motor escolhido pelo usuário (antes da IA). Só quando
+        # o principal não reconheceu. Se o motor de fallback for local, reusa as
+        # páginas já preparadas pra OCR; se for de IA, prepara sem OCR.
+        fb = p.motor_fallback
+        if not v.aprovado and fb and fb != p.motor_id and disponivel(fb, cfg):
+            fb_local = fb.split(":")[0] in LOCAIS
+            if fb_local and p.modo != "ia":  # `paginas` já está preparado pra OCR
+                paginas_fb = paginas
+            else:
+                paginas_fb = preparar(arquivo, para_ocr=fb_local)
+                preparados.extend(paginas_fb)
+            res_fb = _melhor_de_paginas(resolve(fb, cfg), paginas_fb, tipo, p)
+            if res_fb and (res_fb[1].aprovado or not v.aprovado):
+                leitura, v = res_fb
 
         if p.modo == "auto":
             baixa_conf = leitura.confianca is not None and leitura.confianca < cfg.limiar_confianca

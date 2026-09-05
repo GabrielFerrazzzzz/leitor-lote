@@ -21,3 +21,12 @@ def test_montar_parametros_vazios_viram_none(tmp_path):
     assert p.intervalo_maximo is None
     p2 = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "auto", "383400", "1000")
     assert (p2.seq_esperada, p2.intervalo_maximo) == (383400, 1000)
+
+
+def test_montar_parametros_motor_fallback(tmp_path):
+    p = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "ocr", "", "")
+    assert p.motor_fallback is None
+    p2 = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "ocr", "", "", "trocr")
+    assert p2.motor_fallback == "trocr"
+    p3 = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "ocr", "", "", "")
+    assert p3.motor_fallback is None  # string vazia vira None

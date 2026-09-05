@@ -72,3 +72,6 @@ class ParametrosRodada:
     modo: Modo
     seq_esperada: int | None
     intervalo_maximo: int | None
+    # motor pra tentar quando o principal não reconhece (antes do fallback de IA
+    # do modo "auto"). None = sem esse fallback. Ver pipeline._ler_um.
+    motor_fallback: str | None = None

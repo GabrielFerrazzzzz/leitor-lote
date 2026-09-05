@@ -34,9 +34,10 @@ def _prepared(tmp_path):
     return [PreparedImage(bytes_=b"x", mimetype="image/jpeg", largura=1, altura=1, caminho_tmp=p)]
 
 
-def _params(pasta, modo="ocr", motor="rapidocr"):
+def _params(pasta, modo="ocr", motor="rapidocr", motor_fallback=None):
     return ParametrosRodada(pasta_entrada=pasta, tipo_id="canhoto", motor_id=motor, modo=modo,
-                            seq_esperada=None, intervalo_maximo=None)
+                            seq_esperada=None, intervalo_maximo=None,
+                            motor_fallback=motor_fallback)
 
 
 def test_ok_simples(tmp_path, monkeypatch):
@@ -75,6 +76,66 @@ def test_auto_cai_pro_fallback_quando_ocr_reprova(tmp_path, monkeypatch):
     assert out[0].status == "ok"
     assert out[0].texto_lido == "349498"
     assert out[0].motor == "openai:gpt-5-mini"
+
+
+def test_motor_fallback_tenta_outro_motor_quando_principal_reprova(tmp_path, monkeypatch):
+    pasta = _pasta(tmp_path, 1)
+    monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+
+    class _Ruim:  # motor principal: não fecha 6 dígitos
+        def read(self, img, tipo):
+            return Reading(valor="12", confianca=0.9, motor="rapidocr", bruto="")
+
+    class _Bom:  # motor de fallback: acerta
+        def read(self, img, tipo):
+            return Reading(valor="349498", confianca=0.8, motor="trocr", bruto="")
+
+    monkeypatch.setattr(pipeline, "resolve",
+                        lambda mid, cfg: _Bom() if mid == "trocr" else _Ruim())
+    out = pipeline.rodar(_params(pasta, modo="ocr", motor="rapidocr", motor_fallback="trocr"),
+                         Config(), TIPOS, lambda f, t: None)
+    assert out[0].status == "ok"
+    assert out[0].texto_lido == "349498"
+    assert out[0].motor == "trocr"  # o resultado vencedor veio do motor de fallback
+
+
+def test_motor_fallback_nao_e_chamado_se_principal_ja_reconhece(tmp_path, monkeypatch):
+    pasta = _pasta(tmp_path, 1)
+    monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+    chamou = {"fallback": False}
+
+    class _Bom:
+        def read(self, img, tipo):
+            return Reading(valor="349498", confianca=0.9, motor="rapidocr", bruto="")
+
+    class _Fallback:
+        def read(self, img, tipo):
+            chamou["fallback"] = True
+            return Reading(valor="000000", confianca=0.9, motor="trocr", bruto="")
+
+    monkeypatch.setattr(pipeline, "resolve",
+                        lambda mid, cfg: _Fallback() if mid == "trocr" else _Bom())
+    out = pipeline.rodar(_params(pasta, motor="rapidocr", motor_fallback="trocr"),
+                         Config(), TIPOS, lambda f, t: None)
+    assert out[0].texto_lido == "349498"
+    assert out[0].motor == "rapidocr"
+    assert chamou["fallback"] is False
+
+
+def test_motor_fallback_indisponivel_e_ignorado(tmp_path, monkeypatch):
+    pasta = _pasta(tmp_path, 1)
+    monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+
+    class _Ruim:
+        def read(self, img, tipo):
+            return Reading(valor="12", confianca=0.9, motor="rapidocr", bruto="")
+
+    monkeypatch.setattr(pipeline, "resolve", lambda mid, cfg: _Ruim())
+    monkeypatch.setattr(pipeline, "disponivel",
+                        lambda mid, cfg: mid != "mistral-ocr")  # fallback sem chave
+    out = pipeline.rodar(_params(pasta, modo="ocr", motor="rapidocr", motor_fallback="mistral-ocr"),
+                         Config(), TIPOS, lambda f, t: None)
+    assert out[0].status == "nao_reconhecido"  # não explodiu, só não teve fallback
 
 
 def test_respeita_limite_de_concorrencia(tmp_path, monkeypatch):

@@ -1,6 +1,6 @@
 [project]
 name = "leitor-lote"
-version = "0.2.3"
+version = "0.3.0"
 description = "Leitor de canhotos em lote, local (OCR/IA), com motor escolhivel"
 requires-python = ">=3.12"
 dependencies = [

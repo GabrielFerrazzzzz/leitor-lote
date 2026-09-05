@@ -23,7 +23,8 @@ def opcoes_motor(modo: str, cfg: cfgmod.Config) -> list[tuple[str, bool]]:
 
 
 def montar_parametros(
-    pasta: str, tipo_id: str, motor_id: str, modo: str, seq: str, intervalo: str
+    pasta: str, tipo_id: str, motor_id: str, modo: str, seq: str, intervalo: str,
+    motor_fallback: str | None = None,
 ) -> ParametrosRodada:
     return ParametrosRodada(
         pasta_entrada=Path(pasta),
@@ -32,6 +33,7 @@ def montar_parametros(
         modo=modo,  # type: ignore[arg-type]
         seq_esperada=int(seq) if seq.strip() else None,
         intervalo_maximo=int(intervalo) if intervalo.strip() else None,
+        motor_fallback=motor_fallback or None,
     )
 
 
@@ -83,8 +85,8 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
 
     root = ctk.CTk()
     root.title("leitor-lote")
-    root.geometry("640x460")
-    root.minsize(600, 420)
+    root.geometry("640x520")
+    root.minsize(600, 470)
 
     # --- banner de atualização disponível (fica oculto até a checagem achar algo) ---
     banner = ctk.CTkFrame(root, fg_color="#1e2f3f", corner_radius=0)
@@ -119,6 +121,8 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
     tipo_var = tk.StringVar(value=next(iter(tipos)))
     motor_var = tk.StringVar(value=tipos[tipo_var.get()].motor)
     fallback_var = tk.BooleanVar(value=tipos[tipo_var.get()].modo != "ocr")
+    fb_motor_var = tk.BooleanVar(value=False)   # "tentar com outro motor" ligado?
+    fb_motor_which = tk.StringVar()             # qual motor tentar
     seq_var = tk.StringVar()
     int_var = tk.StringVar()
 
@@ -146,7 +150,18 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         onvalue=True,
         offvalue=False,
     )
-    chk_fallback.grid(row=3, column=0, columnspan=3, sticky="w", pady=(2, 6))
+    chk_fallback.grid(row=3, column=0, columnspan=3, sticky="w", pady=(2, 4))
+
+    chk_fb_motor = ctk.CTkCheckBox(
+        frm,
+        text="Se não reconhecer, tentar com outro motor",
+        variable=fb_motor_var,
+        onvalue=True,
+        offvalue=False,
+    )
+    chk_fb_motor.grid(row=4, column=0, columnspan=3, sticky="w", pady=(0, 2))
+    cb_fb_motor = ctk.CTkComboBox(frm, variable=fb_motor_which, state="readonly")
+    cb_fb_motor.grid(row=5, column=0, columnspan=3, sticky="we", padx=(24, 6), pady=(0, 6))
 
     def _motor_e_local(motor_id: str) -> bool:
         return motor_id.split(":")[0] in LOCAIS
@@ -159,10 +174,13 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         return "ia"
 
     def atualizar_visibilidade_fallback(*_a) -> None:
-        if _motor_e_local(motor_var.get()):
-            chk_fallback.grid()
+        local = _motor_e_local(motor_var.get())
+        (chk_fallback.grid if local else chk_fallback.grid_remove)()
+        (chk_fb_motor.grid if local else chk_fb_motor.grid_remove)()
+        if local and fb_motor_var.get():
+            cb_fb_motor.grid()
         else:
-            chk_fallback.grid_remove()
+            cb_fb_motor.grid_remove()
 
     def opcoes_completas() -> list[tuple[str, bool]]:
         # une motores locais (ocr) e de API (ia) num único combo — opcoes_motor
@@ -176,6 +194,11 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         cb_motor.configure(values=habilitados or [m for m, _ in opts])
         if motor_var.get() not in habilitados and habilitados:
             motor_var.set(habilitados[0])
+        # fallback só pode ser um motor DIFERENTE do principal (e que dá pra usar)
+        outros = [m for m in habilitados if m != motor_var.get()]
+        cb_fb_motor.configure(values=outros)
+        if fb_motor_which.get() not in outros:
+            fb_motor_which.set(outros[0] if outros else "")
         atualizar_visibilidade_fallback()
 
     def ao_trocar_tipo(*_a) -> None:
@@ -185,13 +208,14 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         atualizar_motores()
 
     tipo_var.trace_add("write", ao_trocar_tipo)
-    motor_var.trace_add("write", atualizar_visibilidade_fallback)
+    motor_var.trace_add("write", atualizar_motores)
+    fb_motor_var.trace_add("write", atualizar_visibilidade_fallback)
     atualizar_motores()
 
-    ctk.CTkLabel(frm, text="Sequência esperada").grid(row=4, column=0, sticky="w", pady=4)
-    ctk.CTkEntry(frm, textvariable=seq_var).grid(row=4, column=1, columnspan=2, sticky="we", padx=6)
-    ctk.CTkLabel(frm, text="Intervalo máximo").grid(row=5, column=0, sticky="w", pady=4)
-    ctk.CTkEntry(frm, textvariable=int_var).grid(row=5, column=1, columnspan=2, sticky="we", padx=6)
+    ctk.CTkLabel(frm, text="Sequência esperada").grid(row=6, column=0, sticky="w", pady=4)
+    ctk.CTkEntry(frm, textvariable=seq_var).grid(row=6, column=1, columnspan=2, sticky="we", padx=6)
+    ctk.CTkLabel(frm, text="Intervalo máximo").grid(row=7, column=0, sticky="w", pady=4)
+    ctk.CTkEntry(frm, textvariable=int_var).grid(row=7, column=1, columnspan=2, sticky="we", padx=6)
 
     def configurar_chaves() -> None:
         d = ctk.CTkToplevel(root)
@@ -214,16 +238,16 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         ctk.CTkButton(d, text="Salvar", command=salvar_).grid(row=2, column=0, columnspan=2, pady=10)
 
     ctk.CTkButton(frm, text="Configurar chaves…", command=configurar_chaves).grid(
-        row=6, column=0, columnspan=3, pady=(8, 0)
+        row=8, column=0, columnspan=3, pady=(8, 0)
     )
 
     barra = ctk.CTkProgressBar(frm)
     barra.set(0)
-    barra.grid(row=7, column=0, columnspan=3, sticky="we", pady=8)
+    barra.grid(row=9, column=0, columnspan=3, sticky="we", pady=8)
     status = ctk.CTkLabel(frm, text="")
-    status.grid(row=8, column=0, columnspan=3)
+    status.grid(row=10, column=0, columnspan=3)
     btn = ctk.CTkButton(frm, text="Rodar")
-    btn.grid(row=9, column=0, columnspan=3, pady=(0, 8))
+    btn.grid(row=11, column=0, columnspan=3, pady=(0, 8))
 
     # --- resultados: nada fica visível na janela principal durante/após a
     # rodada -- só a contagem em `status`. A tabela de verdade só aparece
@@ -275,7 +299,7 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
     btn_exportar = ctk.CTkButton(
         frm, text="Exportar CSV…", command=_exportar_csv_click, state="disabled"
     )
-    btn_exportar.grid(row=10, column=0, columnspan=3, pady=(0, 4))
+    btn_exportar.grid(row=12, column=0, columnspan=3, pady=(0, 4))
 
     def progresso(feitos: int, total: int) -> None:
         frac = 0.0 if total == 0 else feitos / total
@@ -302,6 +326,7 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         p = montar_parametros(
             pasta, tipo_var.get(), motor_var.get(), modo_efetivo(),
             seq_var.get(), int_var.get(),
+            fb_motor_which.get() if fb_motor_var.get() else None,
         )
         cfg.ultima_pasta = pasta
         cfgmod.salvar(cfg)

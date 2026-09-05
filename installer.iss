@@ -2,6 +2,10 @@
 ; Empacota a saída --onedir do PyInstaller (dist\leitor-lote\) num instalador
 ; de usuário único (sem admin), com atalho na área de trabalho.
 ;
+; O usuário escolhe a pasta de instalação (DisableDirPage=no). O padrão sugerido
+; é C:\Users\<voce>\leitor-lote -- fácil de achar no Explorer e sem precisar de
+; admin. Antes ia pra %LOCALAPPDATA% (AppData, oculto), que era difícil de achar.
+;
 ; Uso local: iscc installer.iss   (depois de "uv run pyinstaller leitor-lote.spec")
 ; Uso no CI: ISCC.exe installer.iss /DMyAppVersion=0.1.2
 
@@ -19,9 +23,10 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-DefaultDirName={localappdata}\{#MyAppName}
+DefaultDirName={%USERPROFILE}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+DisableDirPage=no
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=.

@@ -7,6 +7,7 @@ from leitor_lote.readers.base import Reader
 MOTORES_IDS: list[str] = [
     "tesseract",
     "rapidocr",
+    "soma",
     "openai:gpt-5-mini",
     "openai:gpt-5",
     "mistral-ocr",
@@ -24,6 +25,10 @@ def resolve(motor_id: str, config) -> Reader:
         from leitor_lote.readers.rapidocr_reader import RapidOcrReader
 
         return RapidOcrReader()
+    if base == "soma":
+        from leitor_lote.readers.soma_reader import SomaReader
+
+        return SomaReader(config)
     if base == "openai":
         from leitor_lote.readers.openai_reader import OpenAIReader
 
@@ -41,6 +46,8 @@ def disponivel(motor_id: str, config) -> bool:
         return bool(config.chave_openai)
     if base == "mistral-ocr":
         return bool(config.chave_mistral)
+    if base == "soma":
+        return bool(config.soma_token)
     if base == "tesseract":
         return shutil.which("tesseract") is not None
     return True

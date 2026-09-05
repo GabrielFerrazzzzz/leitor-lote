@@ -141,7 +141,7 @@ wheels = [
 
 [[package]]
 name = "leitor-lote"
-version = "0.4.1"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "customtkinter" },

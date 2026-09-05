@@ -20,6 +20,10 @@ class Config:
     chave_mistral: str | None = None
     ultima_pasta: str | None = None
     motor_padrao: str | None = None
+    # login opcional na Soma (motor "soma" manda a leitura pro servidor deles)
+    soma_email: str | None = None
+    soma_token: str | None = None
+    soma_refresh: str | None = None
     concorrencia: int = 3
     limiar_confianca: float = 0.6
     motor_ia_fallback: str = "openai:gpt-5-mini"

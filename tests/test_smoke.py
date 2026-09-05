@@ -2,4 +2,4 @@ import leitor_lote
 
 
 def test_importa_pacote():
-    assert leitor_lote.__version__ == "0.4.1"
+    assert leitor_lote.__version__ == "0.5.0"

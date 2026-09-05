@@ -15,6 +15,11 @@ def test_opcoes_motor_ia_desabilita_sem_chave():
     assert ("mistral-ocr", False) in opts2
 
 
+def test_opcoes_motor_soma_so_com_login():
+    assert ("soma", False) in gui.opcoes_motor("ia", Config())
+    assert ("soma", True) in gui.opcoes_motor("ia", Config(soma_token="jwt"))
+
+
 def test_montar_parametros_vazios_viram_none(tmp_path):
     p = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "auto", "", "  ")
     assert p.seq_esperada is None

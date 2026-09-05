@@ -8,7 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
 
-from leitor_lote import __version__, atualizacao
+from leitor_lote import __version__, atualizacao, soma
 from leitor_lote import config as cfgmod
 from leitor_lote.models import LinhaResultado, ParametrosRodada
 from leitor_lote.output import copiar_um, exportar_csv
@@ -244,9 +244,64 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
 
         ctk.CTkButton(d, text="Salvar", command=salvar_).grid(row=2, column=0, columnspan=2, pady=10)
 
-    ctk.CTkButton(frm, text="Configurar chaves…", command=configurar_chaves).grid(
-        row=8, column=0, columnspan=3, pady=(8, 0)
+    def _atualizar_soma_btn() -> None:
+        if cfg.soma_token:
+            soma_btn.configure(text=f"Soma: {cfg.soma_email or 'conectado'}  ✕", command=sair_soma)
+        else:
+            soma_btn.configure(text="Entrar na Soma…", command=entrar_soma)
+
+    def sair_soma() -> None:
+        cfg.soma_email = cfg.soma_token = cfg.soma_refresh = None
+        cfgmod.salvar(cfg)
+        _atualizar_soma_btn()
+        atualizar_motores()
+
+    def entrar_soma() -> None:
+        d = ctk.CTkToplevel(root)
+        d.title("Entrar na Soma")
+        d.geometry("380x210")
+        d.transient(root)
+        email = tk.StringVar(value=cfg.soma_email or "")
+        senha = tk.StringVar()
+        erro = ctk.CTkLabel(d, text="", text_color="#e06c75")
+        ctk.CTkLabel(d, text="Mesmo login do site da Soma").grid(
+            row=0, column=0, columnspan=2, padx=12, pady=(12, 4), sticky="w"
+        )
+        ctk.CTkLabel(d, text="E-mail").grid(row=1, column=0, padx=12, pady=6, sticky="w")
+        ent_e = ctk.CTkEntry(d, textvariable=email, width=210)
+        ent_e.grid(row=1, column=1, padx=12, pady=6)
+        ctk.CTkLabel(d, text="Senha").grid(row=2, column=0, padx=12, pady=6, sticky="w")
+        ctk.CTkEntry(d, textvariable=senha, show="*", width=210).grid(row=2, column=1, padx=12, pady=6)
+        erro.grid(row=3, column=0, columnspan=2, padx=12)
+
+        def entrar_() -> None:
+            try:
+                sessao = soma.login(email.get().strip(), senha.get())
+            except Exception as e:  # noqa: BLE001
+                erro.configure(text=str(e)[:120])
+                return
+            cfg.soma_email = sessao["email"]
+            cfg.soma_token = sessao["access_token"]
+            cfg.soma_refresh = sessao["refresh_token"]
+            cfgmod.salvar(cfg)
+            _atualizar_soma_btn()
+            atualizar_motores()
+            motor_var.set("soma")  # logou = quer usar a Soma
+            d.destroy()
+
+        ctk.CTkButton(d, text="Entrar", command=entrar_).grid(
+            row=4, column=0, columnspan=2, pady=12
+        )
+        ent_e.focus_set()
+
+    cfg_row = ctk.CTkFrame(frm, fg_color="transparent")
+    cfg_row.grid(row=8, column=0, columnspan=3, pady=(8, 0))
+    ctk.CTkButton(cfg_row, text="Configurar chaves…", command=configurar_chaves, width=175).pack(
+        side="left", padx=4
     )
+    soma_btn = ctk.CTkButton(cfg_row, text="Entrar na Soma…", command=entrar_soma, width=175)
+    soma_btn.pack(side="left", padx=4)
+    _atualizar_soma_btn()
 
     barra = ctk.CTkProgressBar(frm)
     barra.set(0)

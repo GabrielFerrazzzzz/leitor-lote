@@ -2,47 +2,48 @@
 
 Lê uma pasta de canhotos (imagens `.jpg/.png` e PDFs), extrai o número de cada um
 (OCR ou IA, motor escolhível), valida, e grava cópias renomeadas em `<pasta>/saida/`.
-Os resultados aparecem numa tabela na própria janela, com um botão para exportar
-`resultado.csv` para onde você quiser. Roda 100% na máquina — sem upload, sem servidor.
+Roda 100% na máquina — sem upload, sem servidor.
 
-## Uso (executável)
+## Uso (instalador)
 
-1. Baixe o zip do [Releases](https://github.com/GabrielFerrazzzzz/leitor-lote/releases) e extraia.
-2. Rode `leitor-lote.exe`. Na 1ª vez o Windows mostra o SmartScreen —
+1. Baixe o `leitor-lote-setup.exe` do
+   [Releases](https://github.com/GabrielFerrazzzzz/leitor-lote/releases/latest) e rode.
+   O instalador deixa você escolher a pasta; não precisa de admin.
+2. Na 1ª vez o Windows mostra o SmartScreen —
    **Mais informações → Executar assim mesmo**.
 3. Escolha a pasta, o tipo de leitura e o motor, e clique **Rodar**. Se o motor
-   escolhido for local (Tesseract/RapidOCR/TrOCR), aparece a opção "Se não
-   reconhecer, tentar de novo com IA" — veja a seção **Motor local + IA de
-   reforço** abaixo.
-4. As cópias renomeadas ficam em `<pasta>/saida/`. O resultado também aparece numa
-   tabela na janela, com um botão **Exportar CSV…** para salvar `resultado.csv`
-   onde você quiser.
+   escolhido for local (Tesseract/RapidOCR), aparecem as opções "Se não reconhecer,
+   tentar de novo com IA" e "…tentar com outro motor" — veja **Fallbacks** abaixo.
+4. As cópias renomeadas vão para `<pasta>/saida/` conforme cada arquivo é lido. Para
+   ver a tabela e salvar `resultado.csv`, clique **Exportar CSV…**.
 
 ### Motores
 
 | Motor | Chave? | Observação |
 |---|---|---|
-| `tesseract` | não | requer Tesseract instalado no PATH (não vai no pacote nesta versão); bom no número impresso |
-| `rapidocr` | não | embutido; melhor OCR tradicional grátis |
-| `trocr` | não | baixa ~1,3 GB no 1º uso (precisa de internet uma vez) |
+| `rapidocr` | não | embutido; padrão para os tipos de canhoto |
+| `tesseract` | não | requer Tesseract instalado no PATH (não vai no pacote); bom no número impresso |
 | `openai:gpt-5-mini` / `openai:gpt-5` | sim | cole a chave em **Configurar chaves…** |
 | `mistral-ocr` | sim | idem |
 
-### Motor local + IA de reforço
+### Fallbacks
 
-Não existe mais um seletor de "Modo" separado — o comportamento é decidido pelo
-Motor escolhido:
+Não existe seletor de "Modo" — o comportamento vem do Motor escolhido + dois
+checkboxes (só aparecem com Motor local):
 
-- Motor **local** (`tesseract`/`rapidocr`/`trocr`): aparece a opção **"Se não
-  reconhecer, tentar de novo com IA"**, marcada por padrão. Marcada, se o OCR
-  local reprovar na validação ou a confiança ficar baixa, a leitura é refeita com
-  `openai:gpt-5-mini` (se houver chave configurada). Desmarcada, usa só o motor
-  local.
-- Motor de **API** (`openai:*`/`mistral-ocr`): a leitura é feita direto por ele,
-  sem OCR local antes.
+- **"Se não reconhecer, tentar de novo com IA"** (marcada por padrão): se o OCR
+  local reprovar na validação ou a confiança ficar baixa, refaz com
+  `openai:gpt-5-mini` (se houver chave). Internamente é o `modo="auto"`.
+- **"Se não reconhecer, tentar com outro motor"** + combo: refaz o arquivo com o
+  motor escolhido no combo (`ParametrosRodada.motor_fallback`). O combo só lista
+  motores disponíveis diferentes do principal.
 
-(Internamente isso ainda é o campo `modo` — `"ocr"`/`"auto"`/`"ia"` — em
-`ParametrosRodada`; só deixou de ser um campo separado na tela.)
+Ordem quando os dois estão ligados: principal → motor do combo → IA. Um fallback
+que quebra (API sem rede, motor sem dependência) é ignorado — mantém o resultado
+do principal, não vira `erro`.
+
+Motor de **API** como principal (`openai:*`/`mistral-ocr`): a leitura é feita
+direto por ele, sem OCR local antes, e os checkboxes somem.
 
 ## `tipos.json`
 
@@ -87,7 +88,7 @@ No CI, um push de tag `v*` builda no `windows-latest` e anexa o zip no Release.
 
 ```bash
 uv run python -m bench.benchmark --pasta ./amostras --gabarito ./amostras/gabarito.csv \
-    --tipo canhoto --motores tesseract,rapidocr,trocr,openai:gpt-5-mini,mistral-ocr
+    --tipo canhoto --motores tesseract,rapidocr,openai:gpt-5-mini,mistral-ocr
 ```
 
 `gabarito.csv`: colunas `arquivo,esperado` (dígitos esperados). Saída: tabela no

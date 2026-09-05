@@ -194,11 +194,18 @@ def rodar_janela() -> None:  # pragma: no cover - exercitado manualmente
         cb_motor.configure(values=habilitados or [m for m, _ in opts])
         if motor_var.get() not in habilitados and habilitados:
             motor_var.set(habilitados[0])
-        # fallback só pode ser um motor DIFERENTE do principal (e que dá pra usar)
+        # fallback só pode ser um motor DIFERENTE do principal (e que dá pra usar).
+        # Sem nenhum (ex.: só rapidocr, sem tesseract no PATH nem chave de API) ->
+        # desabilita o checkbox pra não sobrar um combo vazio.
         outros = [m for m in habilitados if m != motor_var.get()]
         cb_fb_motor.configure(values=outros)
         if fb_motor_which.get() not in outros:
             fb_motor_which.set(outros[0] if outros else "")
+        if outros:
+            chk_fb_motor.configure(state="normal")
+        else:
+            fb_motor_var.set(False)
+            chk_fb_motor.configure(state="disabled")
         atualizar_visibilidade_fallback()
 
     def ao_trocar_tipo(*_a) -> None:

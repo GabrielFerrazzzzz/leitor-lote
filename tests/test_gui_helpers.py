@@ -4,7 +4,7 @@ from leitor_lote.config import Config
 
 def test_opcoes_motor_ocr_so_locais():
     ids = [m for m, _ in gui.opcoes_motor("ocr", Config())]
-    assert ids == ["tesseract", "rapidocr", "trocr"]
+    assert ids == ["tesseract", "rapidocr"]  # trocr saiu na v0.4.0
 
 
 def test_opcoes_motor_ia_desabilita_sem_chave():
@@ -26,7 +26,7 @@ def test_montar_parametros_vazios_viram_none(tmp_path):
 def test_montar_parametros_motor_fallback(tmp_path):
     p = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "ocr", "", "")
     assert p.motor_fallback is None
-    p2 = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "ocr", "", "", "trocr")
-    assert p2.motor_fallback == "trocr"
+    p2 = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "ocr", "", "", "openai:gpt-5")
+    assert p2.motor_fallback == "openai:gpt-5"
     p3 = gui.montar_parametros(str(tmp_path), "canhoto", "rapidocr", "ocr", "", "", "")
     assert p3.motor_fallback is None  # string vazia vira None

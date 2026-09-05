@@ -81,6 +81,7 @@ def test_auto_cai_pro_fallback_quando_ocr_reprova(tmp_path, monkeypatch):
 def test_motor_fallback_tenta_outro_motor_quando_principal_reprova(tmp_path, monkeypatch):
     pasta = _pasta(tmp_path, 1)
     monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+    monkeypatch.setattr(pipeline, "disponivel", lambda mid, cfg: True)
 
     class _Ruim:  # motor principal: não fecha 6 dígitos
         def read(self, img, tipo):
@@ -88,20 +89,21 @@ def test_motor_fallback_tenta_outro_motor_quando_principal_reprova(tmp_path, mon
 
     class _Bom:  # motor de fallback: acerta
         def read(self, img, tipo):
-            return Reading(valor="349498", confianca=0.8, motor="trocr", bruto="")
+            return Reading(valor="349498", confianca=0.8, motor="tesseract", bruto="")
 
     monkeypatch.setattr(pipeline, "resolve",
-                        lambda mid, cfg: _Bom() if mid == "trocr" else _Ruim())
-    out = pipeline.rodar(_params(pasta, modo="ocr", motor="rapidocr", motor_fallback="trocr"),
+                        lambda mid, cfg: _Bom() if mid == "tesseract" else _Ruim())
+    out = pipeline.rodar(_params(pasta, modo="ocr", motor="rapidocr", motor_fallback="tesseract"),
                          Config(), TIPOS, lambda f, t: None)
     assert out[0].status == "ok"
     assert out[0].texto_lido == "349498"
-    assert out[0].motor == "trocr"  # o resultado vencedor veio do motor de fallback
+    assert out[0].motor == "tesseract"  # o resultado vencedor veio do motor de fallback
 
 
 def test_motor_fallback_nao_e_chamado_se_principal_ja_reconhece(tmp_path, monkeypatch):
     pasta = _pasta(tmp_path, 1)
     monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+    monkeypatch.setattr(pipeline, "disponivel", lambda mid, cfg: True)
     chamou = {"fallback": False}
 
     class _Bom:
@@ -111,11 +113,11 @@ def test_motor_fallback_nao_e_chamado_se_principal_ja_reconhece(tmp_path, monkey
     class _Fallback:
         def read(self, img, tipo):
             chamou["fallback"] = True
-            return Reading(valor="000000", confianca=0.9, motor="trocr", bruto="")
+            return Reading(valor="000000", confianca=0.9, motor="tesseract", bruto="")
 
     monkeypatch.setattr(pipeline, "resolve",
-                        lambda mid, cfg: _Fallback() if mid == "trocr" else _Bom())
-    out = pipeline.rodar(_params(pasta, motor="rapidocr", motor_fallback="trocr"),
+                        lambda mid, cfg: _Fallback() if mid == "tesseract" else _Bom())
+    out = pipeline.rodar(_params(pasta, motor="rapidocr", motor_fallback="tesseract"),
                          Config(), TIPOS, lambda f, t: None)
     assert out[0].texto_lido == "349498"
     assert out[0].motor == "rapidocr"
@@ -123,11 +125,12 @@ def test_motor_fallback_nao_e_chamado_se_principal_ja_reconhece(tmp_path, monkey
 
 
 def test_motor_fallback_que_explode_nao_derruba_o_principal(tmp_path, monkeypatch):
-    # bug real do Gabriel: TrOCR de fallback sem o modelo baixado levantava
-    # exceção e o arquivo virava ERRO_ em vez de manter o "nao_reconhecido"
-    # do motor principal.
+    # bug real do Gabriel: o motor de fallback levantava exceção (na época era o
+    # TrOCR sem o modelo baixado) e o arquivo virava ERRO_ em vez de manter o
+    # "nao_reconhecido" do motor principal.
     pasta = _pasta(tmp_path, 1)
     monkeypatch.setattr(pipeline, "preparar", lambda *a, **k: _prepared(tmp_path))
+    monkeypatch.setattr(pipeline, "disponivel", lambda mid, cfg: True)
 
     class _Principal:
         def read(self, img, tipo):
@@ -135,11 +138,11 @@ def test_motor_fallback_que_explode_nao_derruba_o_principal(tmp_path, monkeypatc
 
     class _FallbackQuebrado:
         def read(self, img, tipo):
-            raise RuntimeError("modelo trocr nao baixado")
+            raise RuntimeError("motor de fallback indisponível")
 
     monkeypatch.setattr(pipeline, "resolve",
-                        lambda mid, cfg: _FallbackQuebrado() if mid == "trocr" else _Principal())
-    out = pipeline.rodar(_params(pasta, modo="ocr", motor="rapidocr", motor_fallback="trocr"),
+                        lambda mid, cfg: _FallbackQuebrado() if mid == "tesseract" else _Principal())
+    out = pipeline.rodar(_params(pasta, modo="ocr", motor="rapidocr", motor_fallback="tesseract"),
                          Config(), TIPOS, lambda f, t: None)
     assert out[0].status == "nao_reconhecido"  # NÃO "erro"
     assert out[0].erro is None

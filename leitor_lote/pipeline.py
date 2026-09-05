@@ -37,8 +37,8 @@ def _tentar_secundario(motor_id, arquivo, paginas_ocr, principal_e_ocr,
                        p, cfg, tipo, preparados):
     """Tenta um motor secundário (fallback). Devolve (leitura, v) se rodou, ou
     None se o motor não está disponível OU se levantou exceção. Um fallback que
-    quebra (ex.: TrOCR sem o modelo baixado, ou API sem rede) NÃO derruba o
-    resultado do motor principal pra 'erro' -- só é ignorado."""
+    quebra (ex.: API sem rede, motor sem dependência) NÃO derruba o resultado do
+    motor principal pra 'erro' -- só é ignorado."""
     if not motor_id or not disponivel(motor_id, cfg):
         return None
     try:
